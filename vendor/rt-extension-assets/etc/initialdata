@@ -1,0 +1,44 @@
+use strict;
+use warnings;
+
+# Temporarily enable the plugin so the asset lifecycle exists
+unless (grep {$_ eq "RT::Extension::Assets"} RT->Config->Get('Plugins')) {
+    RT->Config->Set('Plugins', (RT->Config->Get('Plugins'), "RT::Extension::Assets"));
+    RT->InitPluginPaths;
+    RT->Config->LoadConfig( File => "Assets_Config.pm" );
+    RT::Lifecycle->FillCache;
+    require RT::Extension::Assets;
+}
+
+require RT::Asset;
+
+our (@Final);
+
+# Create global role groups
+push @Final, sub {
+    foreach my $type (RT::Asset->Roles) {
+        next if $type eq "Owner";   # There's a core global role group for Owner
+
+        my $group = RT::Group->new( RT->SystemUser );
+        my ($ok, $msg) = $group->CreateRoleGroup(
+            Object              => RT->System,
+            Name                => $type,
+            InsideTransaction   => 0,
+        );
+        RT->Logger->error("Couldn't create global asset role group '$type': $msg")
+            unless $ok;
+    }
+};
+
+# Create default catalog
+push @Final, sub {
+    my $catalog = RT::Catalog->new( RT->SystemUser );
+    my ($ok, $msg) = $catalog->Create(
+        Name        => "General assets",
+        Description => "The default catalog",
+    );
+    RT->Logger->error("Couldn't create default catalog 'General assets': $msg")
+        unless $ok;
+};
+
+1;

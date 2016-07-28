@@ -1,0 +1,207 @@
+%# BEGIN BPS TAGGED BLOCK {{{
+%#
+%# COPYRIGHT:
+%#
+%# This software is Copyright (c) 1996-2014 Best Practical Solutions, LLC
+%#                                          <sales@bestpractical.com>
+%#
+%# (Except where explicitly superseded by other copyright notices)
+%#
+%#
+%# LICENSE:
+%#
+%# This work is made available to you under the terms of Version 2 of
+%# the GNU General Public License. A copy of that license should have
+%# been provided with this software, but in any event can be snarfed
+%# from www.gnu.org.
+%#
+%# This work is distributed in the hope that it will be useful, but
+%# WITHOUT ANY WARRANTY; without even the implied warranty of
+%# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+%# General Public License for more details.
+%#
+%# You should have received a copy of the GNU General Public License
+%# along with this program; if not, write to the Free Software
+%# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
+%# 02110-1301 or visit their web page on the internet at
+%# http://www.gnu.org/licenses/old-licenses/gpl-2.0.html.
+%#
+%#
+%# CONTRIBUTION SUBMISSION POLICY:
+%#
+%# (The following paragraph is not intended to limit the rights granted
+%# to you to modify and distribute this software under the terms of
+%# the GNU General Public License and is only of importance to you if
+%# you choose to contribute your changes and enhancements to the
+%# community by submitting them to Best Practical Solutions, LLC.)
+%#
+%# By intentionally submitting any modifications, corrections or
+%# derivatives to this work, or any other work intended for use with
+%# Request Tracker, to Best Practical Solutions, LLC, you confirm that
+%# you are the copyright holder for those contributions and you grant
+%# Best Practical Solutions,  LLC a nonexclusive, worldwide, irrevocable,
+%# royalty-free, perpetual, license to use, copy, create derivative
+%# works based on those contributions, and sublicense and distribute
+%# those contributions and any derivatives thereof.
+%#
+%# END BPS TAGGED BLOCK }}}
+<%args>
+$Path
+</%args>
+<%init>
+
+my $query_string = sub {
+    my %args = @_;
+    my $u    = URI->new();
+    $u->query_form(map { $_ => $args{$_} } sort keys %args);
+    return $u->query || '';
+};
+
+# Top level Assets menu
+my $assets = Menu->child("tools")->add_before(
+               "assets", title => loc("Assets"), path => "/Asset/Search/");
+$assets->child("create", title => loc("Create"), path => "/Asset/CreateInCatalog.html");
+$assets->child("search", title => loc("Search"), path => "/Asset/Search/");
+
+Menu->child("search")->child("assets", title => loc("Assets"), path => "/Asset/Search/");
+
+# Add global Assets custom field admin page
+my $global_cfs = Menu();
+   $global_cfs = $global_cfs->child($_) or last
+        for "admin" => "global" => "custom-fields";
+$global_cfs->child("assets", title => loc("Assets"), path => "/Admin/Global/CustomFields/Catalog-Assets.html")
+    if $global_cfs;
+
+# Add a Catalog admin menu
+my $config = Menu()->child("admin");
+if ($config) {
+    my $assets   = $config->child("tools")->add_before("assets", title => loc("Assets"), path => "/Admin/Assets/");
+    my $catalogs = $assets->child("catalogs",
+        title => loc("Catalogs"),
+        description => loc("Modify asset catalogs"),
+        path => "/Admin/Assets/Catalogs/");
+    $catalogs->child("select", title => loc("Select"), path => $catalogs->path);
+    $catalogs->child("create", title => loc("Create"), path => "Create.html");
+
+    my $cfs = $assets->child("cfs",
+        title => loc("Custom Fields"),
+        description => loc("Modify asset custom fields"),
+        path => "/Admin/CustomFields/?Type=" . RT::Asset->CustomFieldLookupType);
+    $cfs->child("select", title => loc("Select"), path => $cfs->path);
+    $cfs->child("create", title => loc("Create"), path => "/Admin/CustomFields/Modify.html?Create=1&LookupType=" . RT::Asset->CustomFieldLookupType);
+}
+
+# Asset search
+if ($Path =~ m{^/Asset/}) {
+    PageWidgets()->child( asset_search => raw_html => $m->scomp('/Elements/Assets/Search') );
+    PageWidgets()->delete('create_ticket');
+    PageWidgets()->delete('simple_search');
+}
+
+# Page menus
+my $page    = PageMenu();
+
+if ($Path =~ m{^/Asset/} and $DECODED_ARGS->{id} and $DECODED_ARGS->{id} !~ /\D/) {
+    my $id    = $DECODED_ARGS->{id};
+    my $asset = RT::Asset->new( $session{CurrentUser} );
+    $asset->Load($id);
+
+    if ($asset->id) {
+        $page->child("display",     title => loc("Display"),        path => "/Asset/Display.html?id=$id");
+        $page->child("history",     title => loc("History"),        path => "/Asset/History.html?id=$id");
+        $page->child("basics",      title => loc("Basics"),         path => "/Asset/Modify.html?id=$id");
+        $page->child("links",       title => loc("Links"),          path => "/Asset/ModifyLinks.html?id=$id");
+        $page->child("people",      title => loc("People"),         path => "/Asset/ModifyPeople.html?id=$id");
+        $page->child("dates",       title => loc("Dates"),          path => "/Asset/ModifyDates.html?id=$id");
+
+        for my $grouping (RT::CustomField->CustomGroupings($asset)) {
+            my $cfs = $asset->CustomFields;
+            $cfs->LimitToGrouping( $asset => $grouping );
+            next unless $cfs->Count;
+            $page->child(
+                "cf-grouping-$grouping",
+                title   => loc($grouping),
+                path    => "/Asset/ModifyCFs.html?id=$id;Grouping=" . $m->interp->apply_escapes($grouping, 'u'),
+            );
+        }
+
+        my $actions = $page->child("actions", title => loc("Actions"));
+        $actions->child("create-linked-ticket", title => loc("Create linked ticket"), path => "/Asset/CreateLinkedTicket.html?Asset=$id");
+
+        my $status    = $asset->Status;
+        my $lifecycle = $asset->LifecycleObj;
+        for my $action ( $lifecycle->Actions($status) ) {
+            my $next = $action->{'to'};
+            next unless $lifecycle->IsTransition( $status => $next );
+
+            my $check = $lifecycle->CheckRight( $status => $next );
+            next unless $asset->CurrentUserHasRight($check);
+
+            my $label = $action->{'label'} || ucfirst($next);
+            $actions->child(
+                $label,
+                title   => loc($label),
+                path    => "/Asset/Modify.html?id=$id;Update=1;DisplayAfter=1;Status="
+                            . $m->interp->apply_escapes($next, 'u'),
+
+                class       => "asset-lifecycle-action",
+                attributes  => {
+                    'data-current-status'   => $status,
+                    'data-next-status'      => $next,
+                },
+            );
+        }
+    }
+}
+elsif ($Path =~ m{^/Asset/Search/}) {
+    my %search = map @{$_},
+        grep defined $_->[1] && length $_->[1],
+        map {ref $DECODED_ARGS->{$_} ? [$_, $DECODED_ARGS->{$_}[0]] : [$_, $DECODED_ARGS->{$_}] }
+        grep /^(?:q|SearchAssets|!?(Name|Description|Catalog|Status|Role\..+|CF\..+)|Order(?:By)?|Page)$/,
+        keys %$DECODED_ARGS;
+    if ( $Path =~ /Bulk/) {
+        $page->child('search',
+            title => loc('Show Results'),
+            path => '/Asset/Search/?'. $query_string->(%search),
+        );
+    } else {
+        $page->child('bulk',
+            title => loc('Bulk Update'),
+            path => '/Asset/Search/Bulk.html?'. $query_string->(%search),
+        );
+    }
+    $page->child('csv',
+        title => loc('Download Spreadsheet'),
+        path  => '/Asset/Search/Results.tsv?' . $query_string->(%search),
+    );
+}
+elsif ($Path =~ m{^/Admin/Global/CustomFields/Catalog-Assets\.html$}) {
+    $page->child("create", title => loc("Create New"), path => "/Admin/CustomFields/Modify.html?Create=1;LookupType=" . RT::Asset->CustomFieldLookupType);
+}
+elsif ($Path =~ m{^/Admin/CustomFields(/|/index\.html)?$}
+       and $DECODED_ARGS->{'Type'} and $DECODED_ARGS->{'Type'} eq RT::Asset->CustomFieldLookupType) {
+    $page->child("create")->path( $page->child("create")->path . "&LookupType=" . RT::Asset->CustomFieldLookupType );
+}
+elsif ($Path =~ m{^/Admin/Assets/Catalogs/}) {
+    my $actions = $Path =~ m{/((index|Create)\.html)?$}
+        ? $page
+        : $page->child("catalogs", title => loc("Catalogs"), path => "/Admin/Assets/Catalogs/");
+
+    $actions->child("select", title => loc("Select"), path => "/Admin/Assets/Catalogs/");
+    $actions->child("create", title => loc("Create"), path => "/Admin/Assets/Catalogs/Create.html");
+
+    my $catalog = RT::Catalog->new( $session{CurrentUser} );
+    $catalog->Load($DECODED_ARGS->{id}) if $DECODED_ARGS->{id};
+
+    if ($catalog->id and $catalog->CurrentUserCanSee) {
+        my $query = "id=" . $catalog->id;
+        $page->child("modify", title => loc("Basics"), path => "/Admin/Assets/Catalogs/Modify.html?$query");
+        $page->child("people", title => loc("Roles"),  path => "/Admin/Assets/Catalogs/Roles.html?$query");
+
+        $page->child("cfs", title => loc("Asset Custom Fields"), path => "/Admin/Assets/Catalogs/CustomFields.html?$query");
+
+        $page->child("group-rights", title => loc("Group Rights"), path => "/Admin/Assets/Catalogs/GroupRights.html?$query");
+        $page->child("user-rights",  title => loc("User Rights"),  path => "/Admin/Assets/Catalogs/UserRights.html?$query");
+    }
+}
+</%init>
