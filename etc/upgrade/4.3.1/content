@@ -1,0 +1,20 @@
+use strict;
+use warnings;
+
+our @Initial = (
+    sub {
+        use RT::CustomFields;
+        my $cfs = RT::CustomFields->new(RT->SystemUser);
+        $cfs->{'find_disabled_rows'} = 1;
+        $cfs->Limit( FIELD => 'EntryHint', VALUE => 'NULL', OPERATOR => 'IS' );
+        while ( my $cf = $cfs->Next ) {
+            my ($ret, $msg) = $cf->SetEntryHint($cf->FriendlyType);
+            if ($ret) {
+                RT->Logger->debug("Update Custom Field EntryHint for CF." . $cf->Id . " $msg");
+            } else {
+                RT->Logger->error("Failed to update Custom Field EntryHint for CF." . $cf->Id . " $msg");
+            }
+        }
+        return 1;
+    },
+);

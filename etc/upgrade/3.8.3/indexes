@@ -1,0 +1,10 @@
+use strict;
+use warnings;
+
+$RT::Handle->MakeSureIndexExists(
+    Table => 'GroupMembers',
+    Unique => 1,
+    Columns => ['GroupId', 'MemberId'],
+);
+
+1;

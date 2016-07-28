@@ -1,0 +1,174 @@
+=head1 Templates
+
+Templates are used in RT to send notifications, typically email. You have
+access to RT data via variables available to you in the scope of the template.
+Templates can also be used for some special actions like creating a new ticket
+as part of the execution of a scrip.
+
+Each template is split into two sections: a block of headers and a body. These
+sections are separated by a blank line. Blank lines are not allowed before
+the headers, but can be included in the body as needed after the headers
+section.
+
+Templates are processed by the L<Text::Template> module. This module
+allows you to embed arbitrary Perl code into your templates. Text wrapped
+in curly braces, C<{...}> is interpreted as Perl. See L<Text::Template>
+for more information.
+
+=head2 Headers
+
+Your template may specify arbitrary email headers. Each header is a name, a
+colon, then a value. So, for example, to specify a subject, you can use:
+
+    Subject: Thanks for your bug report.
+
+=head3 Special Headers
+
+=over
+
+=item Content-Type: text/html
+
+The special header "Content-Type: text/html" tells RT that the template should
+be parsed as HTML. RT will automatically make the outgoing message multipart.
+That way, recipients who can read only plaintext email will receive something
+readable, while users with clients which can display HTML will receive the full
+experience. Please be aware that HTML support in mail clients varies greatly,
+much more so than different web browsers.
+
+Starting in RT 4.2, HTML templates are included along with plain text templates
+for the standard RT notifications.
+
+=back
+
+=head2 Template Types
+
+Templates have a Type which dictates the level of code execution allowed.
+
+Templates of type C<Perl> are evaluated using L<Text::Template>
+which allows arbitrary code execution. Only users with the global
+C<ExecuteCode> privilege may write templates of type C<Perl>. Prior to
+RT 4.0, this was the only type of Template available.
+
+Templates of type C<Simple> permit only simple variable interpolation.
+No special privilege beyond C<ModifyTemplate> is needed to write C<Simple>
+templates.
+
+For both types of templates, text between curly braces C<{ ... }> is
+interpolated. For C<Perl> templates, this text can be any code (see
+L<Text::Template/Details>). For C<Simple> templates, only simple variables
+are permitted; for example C<{ $TicketSubject }>.
+
+=head2 Variables
+
+=head3 Perl templates
+
+The variables that your templates may use include:
+
+=over 4
+
+=item C<$Transaction>
+
+The transaction object.
+
+=item C<$rtname>
+
+The value of the "rtname" config variable.
+
+=item C<$Ticket>
+
+The ticket object. This is only set during a ticket transaction.
+
+=item C<$Requestor>
+
+This is not an object, but the name of the first requestor on the ticket.
+If this is not what you need, inspect C<< $Ticket->Requestors >>.
+
+=item C<loc("text")>
+
+A localization function. See L<Locale::Maketext>.
+
+=back
+
+The C<$Transaction> and C<$Ticket> objects are particularly useful. For
+example, here are some values you can get from each:
+
+    $Ticket->Status      # Current status
+    $Ticket->Owner       # Current owner
+    $Ticket->FirstCustomFieldValue('CustomFieldName') # CF value
+    $Ticket->DueAsString # Current due date as a string
+    $Ticket->DueObj      # Due as an RT::Date object
+    $Ticket->QueueObj    # Queue object for this ticket
+
+    $Transaction->Type     # Type of transaction
+    $Transaction->OldValue # Previous value, if type is Set
+    $Transaction->NewValue # New value, if type is Set
+    $Transaction->CreatorObj->EmailAddress # Email address of trans creator
+
+You can see the methods available in the L<RT::Ticket> and L<RT::Transaction>
+documentation.
+
+=head3 Selected Simple template variables
+
+Since method calls are not allowed in simple templates, many common
+method results have been placed into scalar variables for the template's
+use.  Among them:
+
+=over 4
+
+=item $TicketId
+
+=item $TicketSubject
+
+=item $TicketStatus
+
+=item $TicketQueueName
+
+=item $TicketOwnerName
+
+=item $TicketOwnerEmailAddress
+
+=item $TicketCF(Name)
+
+For example, C<$TicketCFDepartment>.  For CFs with more complicated
+names, all non-word characters (anything that is not letters, numbers,
+or underscores) are stripped to determine the appropriate variable name.
+
+=item $TransactionType
+
+=item $TransactionField
+
+=item $TransactionOldValue
+
+=item $TransactionNewValue
+
+=item $TransactionData
+
+=item $TransactionContent
+
+=item $TransactionDescription
+
+=item $TransactionBriefDescription
+
+=item $TransactionCF(Name)
+
+For example, C<$TransactionCFLocation>.
+
+=back
+
+=head2 Templates Provided with RT
+
+RT comes with a set of templates for the default notifications. As you start to
+customize your templates, these templates are a good place to look for
+examples. As you customize, it can be helpful to create new templates and
+update your scrips to reference your new templates. This leaves the original RT
+templates in place for easy reference.
+
+Starting in RT 4.2, each template has a plain text version and an HTML
+version. For example, the "Correspondence" template is the plain text version
+of the default template for correspondence (replies) and the "Correspondence in
+HTML" template is the same template formatted in HTML. The 4.2 upgrade provides
+a C<switch-templates-to> script to switch all default templates from plain text
+to HTML or the reverse. See the L<UPGRADING-4.2> notes for details.
+
+=cut
+

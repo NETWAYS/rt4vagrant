@@ -1,0 +1,281 @@
+%# BEGIN BPS TAGGED BLOCK {{{
+%#
+%# COPYRIGHT:
+%#
+%# This software is Copyright (c) 1996-2016 Best Practical Solutions, LLC
+%#                                          <sales@bestpractical.com>
+%#
+%# (Except where explicitly superseded by other copyright notices)
+%#
+%#
+%# LICENSE:
+%#
+%# This work is made available to you under the terms of Version 2 of
+%# the GNU General Public License. A copy of that license should have
+%# been provided with this software, but in any event can be snarfed
+%# from www.gnu.org.
+%#
+%# This work is distributed in the hope that it will be useful, but
+%# WITHOUT ANY WARRANTY; without even the implied warranty of
+%# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+%# General Public License for more details.
+%#
+%# You should have received a copy of the GNU General Public License
+%# along with this program; if not, write to the Free Software
+%# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
+%# 02110-1301 or visit their web page on the internet at
+%# http://www.gnu.org/licenses/old-licenses/gpl-2.0.html.
+%#
+%#
+%# CONTRIBUTION SUBMISSION POLICY:
+%#
+%# (The following paragraph is not intended to limit the rights granted
+%# to you to modify and distribute this software under the terms of
+%# the GNU General Public License and is only of importance to you if
+%# you choose to contribute your changes and enhancements to the
+%# community by submitting them to Best Practical Solutions, LLC.)
+%#
+%# By intentionally submitting any modifications, corrections or
+%# derivatives to this work, or any other work intended for use with
+%# Request Tracker, to Best Practical Solutions, LLC, you confirm that
+%# you are the copyright holder for those contributions and you grant
+%# Best Practical Solutions,  LLC a nonexclusive, worldwide, irrevocable,
+%# royalty-free, perpetual, license to use, copy, create derivative
+%# works based on those contributions, and sublicense and distribute
+%# those contributions and any derivatives thereof.
+%#
+%# END BPS TAGGED BLOCK }}}
+<%ARGS>
+$Class => 'RT__Ticket'
+$Name
+$Attr  => undef
+</%ARGS>
+<%ONCE>
+
+use Scalar::Util;
+
+# This is scary and should totally be refactored -- jesse
+my ($COLUMN_MAP, $WCOLUMN_MAP);
+$WCOLUMN_MAP = $COLUMN_MAP = {
+    id => {
+        attribute => 'id',
+        title     => '#', # loc
+        align     => 'right',
+        value     => sub { return $_[0]->id }
+    },
+
+    Created => {
+        attribute => 'Created',
+        title     => 'Created', # loc
+        value     => sub { return $_[0]->CreatedObj->AsString }
+    },
+    CreatedRelative => {
+        attribute => 'Created',
+        title     => 'Created', # loc
+        value     => sub { return $_[0]->CreatedObj->AgeAsString }
+    },
+    CreatedBy => {
+        attribute => 'Creator',
+        title     => 'Created By', # loc
+        value     => sub { return $_[0]->CreatorObj->Name }
+    },
+    LastUpdated => {
+        attribute => 'LastUpdated',
+        title     => 'Last Updated', # loc
+        value     => sub { return $_[0]->LastUpdatedObj->AsString }
+    },
+    LastUpdatedRelative => {
+        attribute => 'LastUpdated',
+        title     => 'Last Updated', # loc
+        value     => sub { return $_[0]->LastUpdatedObj->AgeAsString }
+    },
+    LastUpdatedBy => {
+        attribute => 'LastUpdatedBy',
+        title     => 'Last Updated By', # loc
+        value     => sub { return $_[0]->LastUpdatedByObj->Name }
+    },
+
+    CustomField => {
+        attribute => sub { return shift @_ },
+        title     => sub { return pop @_ },
+        value     => sub {
+            my $self = $WCOLUMN_MAP->{CustomField};
+            my $cf   = $self->{load}->(@_);
+            return unless $cf->Id;
+            return $self->{render}->( $cf, $cf->ValuesForObject($_[0])->ItemsArrayRef );
+        },
+        load      => sub {
+            # Cache the CF object on a per-request basis, to avoid
+            # having to load it for every row
+            my $key = join("-","CF",
+                           $_[0]->CustomFieldLookupType,
+                           $_[0]->CustomFieldLookupId,
+                           $_[-1]);
+
+            my $cf = $m->notes($key);
+            unless ($cf) {
+                $cf = $_[0]->LoadCustomFieldByIdentifier($_[-1]);
+                RT->Logger->notice("Unable to load $_[-1] for ".$_[0]->CustomFieldLookupType." ".$_[0]->CustomFieldLookupId)
+                    unless $cf->Id;
+                $m->notes($key, $cf);
+            }
+            return $cf;
+        },
+        render    => sub {
+            my ($cf, $ocfvs) = @_;
+            my $comp = $m->comp_exists("/Elements/ShowCustomField".$cf->Type)
+                     ? "/Elements/ShowCustomField".$cf->Type
+                     : undef;
+
+            my @values = map {
+                $comp
+                    ? \($m->scomp( $comp, Object => $_ ))
+                    : $_->Content
+            } @$ocfvs;
+
+            if (@values > 1) {
+                for my $value (splice @values) {
+                    push @values, \"<li>", $value, \"</li> \n";
+                }
+                @values = (\"<ul class='cf-values'>", @values, \"</ul>");
+            }
+            return @values;
+        },
+    },
+    CustomRole => {
+        attribute => sub { return shift @_ },
+        title     => sub { return pop @_ },
+        value     => sub {
+            my $object = shift;
+            my $role_name = pop;
+
+            my $role_type = do {
+                # Cache the role object on a per-request basis, to avoid
+                # having to load it for every row
+                my $key = "RT::CustomRole-" . $role_name;
+
+                my $role_type = $m->notes($key);
+                if (!$role_type) {
+                    my $role_obj = RT::CustomRole->new($object->CurrentUser);
+                    $role_obj->Load($role_name);
+
+                    RT->Logger->notice("Unable to load custom role $role_name")
+                        unless $role_obj->Id;
+
+                    $role_type = $role_obj->GroupType;
+                    $m->notes($key, $role_type);
+                }
+
+                $role_type;
+            };
+
+            return if !$role_type;
+            return \($m->scomp("/Elements/ShowPrincipal", Object => $object->RoleGroup($role_type) ) );
+        },
+    },
+
+    CheckBox => {
+        title => sub {
+            my $name = $_[1] || 'SelectedTickets';
+            my $checked = $DECODED_ARGS->{ $name .'All' }? 'checked="checked"': '';
+
+            return \qq{<input type="checkbox" name="}, $name, \qq{All" value="1" $checked
+                              onclick="setCheckbox(this, },
+                              $m->interp->apply_escapes($name,'j'),
+                              \qq{)" />};
+        },
+        value => sub {
+            my $id = $_[0]->id;
+
+            my $name = $_[2] || 'SelectedTickets';
+            return \qq{<input type="checkbox" name="}, $name, \qq{" value="$id" checked="checked" />}
+                if $DECODED_ARGS->{ $name . 'All'};
+
+            my $arg = $DECODED_ARGS->{ $name };
+            my $checked = '';
+            if ( $arg && ref $arg ) {
+                $checked = 'checked="checked"' if grep $_ == $id, grep { defined and length } @$arg;
+            }
+            elsif ( $arg ) {
+                $checked = 'checked="checked"' if $arg == $id;
+            }
+            return \qq{<input type="checkbox" name="}, $name, \qq{" value="$id" $checked />}
+        },
+    },
+    RadioButton => {
+        title => \'&nbsp;',
+        value => sub {
+            my $id = $_[0]->id;
+
+            my $name = $_[2] || 'SelectedTicket';
+            my $arg = $DECODED_ARGS->{ $name };
+            my $checked = '';
+            $checked = 'checked="checked"' if $arg && $arg == $id;
+            return \qq{<input type="radio" name="}, $name, \qq{" value="$id" $checked />};
+        },
+    },
+    (map {
+        my $value = RT->Config->Get($_);
+        $_ => { value => sub { return \$value } };
+    
+    } qw(WebPath WebBaseURL WebURL)),
+    WebRequestPath    => { value => sub { substr( $m->request_path, 1 ) } },
+    WebRequestPathDir => { value => sub { substr( $m->request_comp->dir_path, 1 ) } },
+    WebHomePath       => {
+        value => sub {
+            my $path = RT->Config->Get("WebPath");
+            if (not $session{CurrentUser}->Privileged) {
+                $path .= "/SelfService";
+            }
+            return \$path;
+        },
+    },
+    CurrentUser       => { value => sub { $session{CurrentUser}->id } },
+    CurrentUserName   => { value => sub { $session{CurrentUser}->Name } },
+};
+
+$COLUMN_MAP->{'CF'} = $COLUMN_MAP->{'CustomField'};
+
+Scalar::Util::weaken($WCOLUMN_MAP);
+
+my $ROLE_MAP = {};
+
+</%ONCE>
+<%INIT>
+$m->callback( COLUMN_MAP => $COLUMN_MAP, CallbackName => 'Once', CallbackOnce => 1 );
+
+my $generic_with_roles;
+
+# Add in roles
+my $RecordClass = $Class;
+$RecordClass =~ s/_/:/g;
+if ($RecordClass->DOES("RT::Record::Role::Roles")) {
+    unless ($ROLE_MAP->{$RecordClass}) {
+        # UserDefined => 1 is handled by the CustomRole mapping
+        for my $role ($RecordClass->Roles(UserDefined => 0)) {
+            my $attrs = $RecordClass->Role($role);
+            $ROLE_MAP->{$RecordClass}{$role} = {
+                title => $role,
+                attribute => $attrs->{Column} || "$role.EmailAddress",
+                value => sub { return \($m->scomp("/Elements/ShowPrincipal", Object => $_[0]->RoleGroup($role) ) ) },
+            };
+            $ROLE_MAP->{$RecordClass}{$role . "s"} = $ROLE_MAP->{$RecordClass}{$role}
+                unless $attrs->{Single};
+        }
+    }
+    $generic_with_roles = { %{$COLUMN_MAP}, %{$ROLE_MAP->{$RecordClass}} };
+} else {
+    $generic_with_roles = { %{$COLUMN_MAP} };
+}
+
+$m->callback( COLUMN_MAP => $generic_with_roles );
+
+# first deal with class specific things
+if (RT::Interface::Web->ComponentPathIsSafe($Class) and $m->comp_exists("/Elements/$Class/ColumnMap")) {
+    my $class_map = $m->comp("/Elements/$Class/ColumnMap", Attr => $Attr, Name => $Name, GenericMap => $generic_with_roles );
+    return $class_map if defined $class_map;
+}
+
+return GetColumnMapEntry( Map => $generic_with_roles, Name => $Name, Attribute => $Attr );
+
+</%INIT>

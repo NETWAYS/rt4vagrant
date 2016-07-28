@@ -1,0 +1,186 @@
+%# BEGIN BPS TAGGED BLOCK {{{
+%#
+%# COPYRIGHT:
+%#
+%# This software is Copyright (c) 1996-2016 Best Practical Solutions, LLC
+%#                                          <sales@bestpractical.com>
+%#
+%# (Except where explicitly superseded by other copyright notices)
+%#
+%#
+%# LICENSE:
+%#
+%# This work is made available to you under the terms of Version 2 of
+%# the GNU General Public License. A copy of that license should have
+%# been provided with this software, but in any event can be snarfed
+%# from www.gnu.org.
+%#
+%# This work is distributed in the hope that it will be useful, but
+%# WITHOUT ANY WARRANTY; without even the implied warranty of
+%# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+%# General Public License for more details.
+%#
+%# You should have received a copy of the GNU General Public License
+%# along with this program; if not, write to the Free Software
+%# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
+%# 02110-1301 or visit their web page on the internet at
+%# http://www.gnu.org/licenses/old-licenses/gpl-2.0.html.
+%#
+%#
+%# CONTRIBUTION SUBMISSION POLICY:
+%#
+%# (The following paragraph is not intended to limit the rights granted
+%# to you to modify and distribute this software under the terms of
+%# the GNU General Public License and is only of importance to you if
+%# you choose to contribute your changes and enhancements to the
+%# community by submitting them to Best Practical Solutions, LLC.)
+%#
+%# By intentionally submitting any modifications, corrections or
+%# derivatives to this work, or any other work intended for use with
+%# Request Tracker, to Best Practical Solutions, LLC, you confirm that
+%# you are the copyright holder for those contributions and you grant
+%# Best Practical Solutions,  LLC a nonexclusive, worldwide, irrevocable,
+%# royalty-free, perpetual, license to use, copy, create derivative
+%# works based on those contributions, and sublicense and distribute
+%# those contributions and any derivatives thereof.
+%#
+%# END BPS TAGGED BLOCK }}}
+<%ONCE>
+use Regexp::Common qw(URI);
+
+my $escaper = sub {
+    my $content = shift;
+    RT::Interface::Web::EscapeHTML( \$content );
+    return $content;
+};
+
+my %actions = (
+    default => sub {
+        my %args = @_;
+        return $escaper->($args{value});
+    },
+    url => sub {
+        my %args = @_;
+        my $post = "";
+        $post = ")" if $args{value} !~ /\(/ and $args{value} =~ s/\)$//;
+        $args{value} = $escaper->($args{value});
+        my $result = qq{[<a target="_blank" href="$args{value}">}. loc('Open URL') .qq{</a>]};
+        return $args{value} . qq{ <span class="clickylink">$result</span>$post};
+    },
+    url_overwrite => sub {
+        my %args = @_;
+        my $post = "";
+        $post = ")" if $args{value} !~ /\(/ and $args{value} =~ s/\)$//;
+        $args{value} = $escaper->($args{value});
+        my $result = qq{<a target="_blank" href="$args{value}">$args{value}</a>};
+        return qq{<span class="clickylink">$result</span>$post};
+    },
+);
+
+my @types = (
+    {
+        name   => "httpurl",
+        regex  => qr/$RE{URI}{HTTP}{-keep}{-scheme => 'https?'}(?:#[^\s<]+)?(?<![.?!,;:])/,
+        action => "url",
+    },
+    {
+        name   => "httpurl_overwrite",
+        regex  => qr/$RE{URI}{HTTP}{-keep}{-scheme => 'https?'}(?:#[^\s<]+)?(?<![.?!,;:])/,
+        action => "url_overwrite",
+    },
+);
+
+my $handle = sub {
+    my %args = @_;
+    for my $rec( @types ) {
+        return $rec->{action}->(
+            %args,
+            all_matches => [ $args{value}, $1, $2, $3, $4, $5, $6, $7, $8, $9 ],
+        ) if $args{value} =~ $rec->{regex};
+    }
+};
+
+my $cache; # only defined via callback
+
+# Hook to add more Clicky types
+# XXX Have to have Page argument, as Mason gets caller wrong in Callback?
+# This happens as we are in <%ONCE> block
+$m->callback(
+    CallbackPage => "/Elements/MakeClicky",
+    types        => \@types,
+    actions      => \%actions,
+    handle       => \$handle,
+    cache        => \$cache,
+);
+
+
+# Filter
+my %active;
+$active{$_}++ for RT->Config->Get('Active_MakeClicky');
+@types = grep $active{$_->{name}}, @types;
+
+# Build up the whole match
+my $regexp = join "|", map $_->{regex}, @types;
+
+# Make sure we have a default
+$actions{default} ||= sub {};
+
+# Anchor the regexes and look up the actions
+foreach my $type ( @types ) {
+    $type->{regex}  = qr/^$type->{regex}$/;
+    $type->{action} = $actions{$type->{action}} || $actions{default};
+}
+
+</%ONCE>
+<%ARGS>
+$content => undef
+$html => undef
+</%ARGS>
+<%INIT>
+return unless defined $$content;
+if ( defined $cache ) {
+    my $cached_content = $cache->(fetch => $content);
+    if ( $cached_content ) {
+        RT->Logger->debug("Found MakeClicky cache");
+        $$content = $cached_content;
+        return;
+    }
+}
+
+unless ( $regexp ) {
+    RT::Interface::Web::EscapeHTML( $content ) unless $html;
+    return;
+}
+
+my $pos = 0;
+while ( $$content =~ /($regexp)/gsio ) {
+    my $match = $1;
+    next if $` =~ /\w+=(?:&quot;|")$/;
+    my $skipped_len = pos($$content) - $pos - length($match);
+    if ( $skipped_len > 0 ) {
+        my $plain;
+        if ( $html ) {
+            $plain = substr( $$content, $pos, $skipped_len );
+        }
+        else {
+            $plain = $escaper->( substr( $$content, $pos, $skipped_len ) )
+        }
+        substr( $$content, $pos, $skipped_len ) = $plain;
+        $pos += length($plain);
+    }
+    my $plain = $handle->(
+        %ARGS, 
+        value => $match,
+        all_matches => [ $1, $2, $3, $4, $5, $6, $7, $8, $9 ],
+    );
+    substr( $$content, $pos, length($match) ) = $plain;
+    pos($$content) = ( $pos += length($plain) );
+
+}
+substr( $$content, $pos ) = $escaper->( substr( $$content, $pos ) ) unless
+($pos == length $$content) || $html;
+
+pos($$content) = 0;
+$cache->(store => $content) if defined $cache;
+
+</%INIT>
