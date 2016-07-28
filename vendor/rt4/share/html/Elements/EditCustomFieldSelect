@@ -1,0 +1,212 @@
+%# BEGIN BPS TAGGED BLOCK {{{
+%#
+%# COPYRIGHT:
+%#
+%# This software is Copyright (c) 1996-2016 Best Practical Solutions, LLC
+%#                                          <sales@bestpractical.com>
+%#
+%# (Except where explicitly superseded by other copyright notices)
+%#
+%#
+%# LICENSE:
+%#
+%# This work is made available to you under the terms of Version 2 of
+%# the GNU General Public License. A copy of that license should have
+%# been provided with this software, but in any event can be snarfed
+%# from www.gnu.org.
+%#
+%# This work is distributed in the hope that it will be useful, but
+%# WITHOUT ANY WARRANTY; without even the implied warranty of
+%# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+%# General Public License for more details.
+%#
+%# You should have received a copy of the GNU General Public License
+%# along with this program; if not, write to the Free Software
+%# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
+%# 02110-1301 or visit their web page on the internet at
+%# http://www.gnu.org/licenses/old-licenses/gpl-2.0.html.
+%#
+%#
+%# CONTRIBUTION SUBMISSION POLICY:
+%#
+%# (The following paragraph is not intended to limit the rights granted
+%# to you to modify and distribute this software under the terms of
+%# the GNU General Public License and is only of importance to you if
+%# you choose to contribute your changes and enhancements to the
+%# community by submitting them to Best Practical Solutions, LLC.)
+%#
+%# By intentionally submitting any modifications, corrections or
+%# derivatives to this work, or any other work intended for use with
+%# Request Tracker, to Best Practical Solutions, LLC, you confirm that
+%# you are the copyright holder for those contributions and you grant
+%# Best Practical Solutions,  LLC a nonexclusive, worldwide, irrevocable,
+%# royalty-free, perpetual, license to use, copy, create derivative
+%# works based on those contributions, and sublicense and distribute
+%# those contributions and any derivatives thereof.
+%#
+%# END BPS TAGGED BLOCK }}}
+%# Build up the set of cascading select boxes as "guides"
+%# each one limits the options of the final one a bit
+%# (perhaps by tweaking the .display style?)
+% my $selected = 0;
+% my @category;
+% my $out = $m->scomp('SELF:options', %ARGS, SelectedRef => \$selected, CategoryRef => \@category);
+
+% if ( $RenderType eq 'List' ) {
+<fieldset class="cfedit">
+<div data-name="<%$name%>" id="<%$name%>"
+% if ($CustomField->BasedOnObj->id) {
+  data-cascade-based-on-name="<% $BasedOnName || $NamePrefix . $CustomField->BasedOnObj->id . '-Value' |n %>"
+% }
+>
+%   if ( $checktype eq 'radio' ) {
+% if ( $show_empty_option ) {
+  <div class="none">
+  <input class="none" type="<% $checktype %>" name="<% $name %>" id="<% $name %>-none" value="" <% keys %default ? '' : ' checked="checked"' |n%> />
+  <label for="<% $name %>-none"><&|/l&>(no value)</&></label><br />
+  </div>
+% }
+%   }
+%   my $CFVs = $CustomField->Values;
+%   while ( my $value = $CFVs->Next ) {
+%     my $content = $value->Name;
+%     my $labelid = "$name-". $value->id;
+<div data-name="<% $value->Category || '' %>">
+  <input type="<% $checktype %>" name="<% $name %>" id="<% $labelid %>" value="<% $content %>" <% $default{ lc $content }? ' checked="checked"' : '' |n%> />
+  <label for="<% $labelid %>"><% $content %></label><br />
+</div>
+%   }
+</div>
+</fieldset>
+% } else {
+% if (@category) {
+%# this hidden select is to supply a full list of values,
+%# see filter_cascade_select() in js/cascaded.js
+      <select name="<%$name%>-Complete" id="<%$name%>-Complete" class="hidden" disabled="disabled">
+% if ( $show_empty_option ) {
+        <option value=""<% !$selected && qq[ selected="selected"] |n %>><&|/l&>(no value)</&></option>
+% }
+%       $m->out($out);
+      </select>
+% }
+<select
+  name="<%$name%>" id="<%$name%>" class="CF-Edit CF-<%$CustomField->id%>-Edit<% $use_chosen ? ' chosen' : '' %>"
+% if ($CustomField->BasedOnObj->id) {
+  data-cascade-based-on-name="<% $BasedOnName || $NamePrefix . $CustomField->BasedOnObj->id . '-Value' |n %>"
+% }
+% if ( $Rows && ( $Multiple || !@category || $RenderType eq 'Select box') ) {
+  size="<% $Rows %>"
+% }
+<% $Multiple && qq[multiple="multiple"] |n %> >
+% if ( $show_empty_option ) {
+<option value=""<% !$selected && qq[ selected="selected"] |n %>><&|/l&>(no value)</&></option>
+% }
+% $m->out($out);
+</select>
+% }
+<%init>
+# Handle render types
+$RenderType ||= $CustomField->RenderType;
+if ( $RenderType eq 'Dropdown' ) {
+    # Turn it into a dropdown
+    $Rows = 0;
+}
+
+my ($checktype, $name);
+if ( $MaxValues == 1 and $RenderType eq 'List' ) {
+    ($checktype, $name) = ('radio', $Name || $NamePrefix . $CustomField->Id . '-Value');
+} else {
+    ($checktype, $name) = ('checkbox', $Name || $NamePrefix . $CustomField->Id . '-Values');
+}
+
+@Default = grep defined && length, @Default;
+if ( !@Default && $Values ) {
+    @Default = map $_->Content, @{ $Values->ItemsArrayRef };
+}
+my %default = map {lc $_ => 1} @Default;
+
+my $show_empty_option;
+if ( exists $ARGS{ShowEmptyOption} ) {
+    $show_empty_option = $ARGS{ShowEmptyOption};
+}
+else {
+    if ( $CustomField->MatchPattern('') ) {
+        $show_empty_option = 1;
+    }
+    elsif ( $CustomField->SupportDefaultValues ) {
+        my ( $on ) = grep { $_->isa( $CustomField->RecordClassFromLookupType ) } $CustomField->ACLEquivalenceObjects;
+        my $default_values = $CustomField->DefaultValues( Object => $on || RT->System );
+        $show_empty_option = 1 unless defined $default_values && length $default_values;
+    }
+}
+
+my $use_chosen = $CustomField->Values->Count >= 10 ? 1 : 0;
+$m->callback( CallbackName => 'Chosen', UseChosen => \$use_chosen, CustomField => $CustomField );
+
+# it's weird to see "(no value) X" in the input when selecting multiple values
+$show_empty_option = 0 if $use_chosen && $Multiple;
+</%init>
+<%ARGS>
+$Object => undef
+$CustomField => undef
+$NamePrefix => undef
+$Name => undef
+$BasedOnName => undef
+@Default => ()
+$Values => undef
+$Multiple => 0
+$Rows => undef
+$HideCategory => 0
+$RenderType => undef
+$MaxValues => 1
+</%ARGS>
+
+<%METHOD options>
+% @Default = grep defined && length, @Default;
+% # $Values->HasEntry is too slow here
+% if ( !@Default && $Values ) {
+%     @Default = map $_->Content, @{$Values->ItemsArrayRef};
+% }
+% $_ = lc $_ foreach @Default;
+% my $selected;
+% my $CFVs = $CustomField->Values;
+% my @levels;
+% while ( my $value = $CFVs->Next ) {
+%       my $name = $value->Name;
+%       my $category = $value->Category || '';
+%       my $level = (split /:/, $category, 2)[0] || '';
+%       while (@levels) {
+%           if ($levels[-1] eq $level) {
+%               $level = '';
+%               last;
+%           } elsif (index($level, $levels[-1]) != 0) {
+%               $m->out('</optgroup>');
+%               pop @levels;
+%           } else {
+%               last;
+%           }
+%       }
+%       if ( length $level ) {
+%           push @$CategoryRef, [0+@levels, $level];
+            <optgroup style="padding-left: <% @levels/2 %>em" label="<% $category %>">
+%           push @levels, $level;
+%       }
+        <option value="<% $name %>"
+%       if ( grep $_ eq lc $name, @Default )
+%       {
+%           $$SelectedRef = 1;
+            selected="selected"
+%       }
+        ><% $name %></option>
+% }
+% for (@levels) {
+            </optgroup>
+% }
+<%ARGS>
+$CustomField => undef
+@Default => ()
+$Values => undef
+$SelectedRef => undef
+$CategoryRef => undef
+</%ARGS>
+</%METHOD>
