@@ -9,6 +9,8 @@ apt-get update && apt-get dist-upgrade -y -u \
     cpanminus \
     libmysqlclient-dev \
     libmysqlclient20 \
+    git \
+    vim \
     \
     libhtml-mason-perl \
     libapache-session-perl \
@@ -90,4 +92,34 @@ apt-get update && apt-get dist-upgrade -y -u \
     libnet-ldap-perl
 
 cpanm --notest --installdeps /vagrant/.provision
+
+RTBASE=/vagrant/vendor/rt4
+RTVERSION="rt-4.4.1rc2"
+
+echo "$RTVERSION" > $RTBASE/.tag
+
+cd $RTBASE
+autoconf -f
+sh configure \
+  --enable-layout=inplace \
+  --prefix=$RTBASE \
+  --enable-graphviz \
+   --enable-gd \
+  --enable-gpg \
+  --enable-smime \
+  --with-developer \
+  --with-web-handler=standalone \
+  --with-db-type=SQLite \
+
+mkdir -p $RTBASE/var/data/gpg
+mkdir -p $RTBASE/var/data/smime
+mkdir -p $RTBASE/var/data/RT-Shredder
+mkdir -p $RTBASE/var/session_data
+
+if [[ ! -f $RTBASE/var/rt4 ]]; then
+  sbin/rt-setup-database \
+    --action init \
+    --force --dba="" \
+    --dba-password=""
+fi
 
