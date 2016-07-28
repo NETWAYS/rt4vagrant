@@ -94,7 +94,7 @@ apt-get update && apt-get dist-upgrade -y -u \
 cpanm --notest --installdeps /vagrant/.provision
 
 RTBASE=/vagrant/vendor/rt4
-RTVERSION="rt-4.4.1rc2"
+RTVERSION="rt-4.4.1"
 
 echo "$RTVERSION" > $RTBASE/.tag
 
