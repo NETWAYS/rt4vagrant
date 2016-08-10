@@ -93,7 +93,7 @@ apt-get update && apt-get dist-upgrade -y -u \
 
 cpanm --notest --installdeps /vagrant/.provision
 
-RTBASE=/vagrant/vendor/rt4
+RTBASE=/vagrant/vendor/rt
 RTVERSION="rt-4.4.1"
 
 echo "$RTVERSION" > $RTBASE/.tag
@@ -104,10 +104,11 @@ sh configure \
   --enable-layout=inplace \
   --prefix=$RTBASE \
   --enable-graphviz \
-   --enable-gd \
+  --enable-gd \
   --enable-gpg \
   --enable-smime \
-  --with-developer \
+  --enable-developer \
+  --enable-externalauth \
   --with-web-handler=standalone \
   --with-db-type=SQLite \
 
@@ -123,3 +124,4 @@ if [[ ! -f $RTBASE/var/rt4 ]]; then
     --dba-password=""
 fi
 
+cp -f /vagrant/.provision/rt/RT_SiteConfig.pm /vagrant/vendor/rt/etc
