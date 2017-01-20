@@ -1,0 +1,127 @@
+%# BEGIN BPS TAGGED BLOCK {{{
+%#
+%# COPYRIGHT:
+%#
+%# This software is Copyright (c) 1996-2016 Best Practical Solutions, LLC
+%#                                          <sales@bestpractical.com>
+%#
+%# (Except where explicitly superseded by other copyright notices)
+%#
+%#
+%# LICENSE:
+%#
+%# This work is made available to you under the terms of Version 2 of
+%# the GNU General Public License. A copy of that license should have
+%# been provided with this software, but in any event can be snarfed
+%# from www.gnu.org.
+%#
+%# This work is distributed in the hope that it will be useful, but
+%# WITHOUT ANY WARRANTY; without even the implied warranty of
+%# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+%# General Public License for more details.
+%#
+%# You should have received a copy of the GNU General Public License
+%# along with this program; if not, write to the Free Software
+%# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
+%# 02110-1301 or visit their web page on the internet at
+%# http://www.gnu.org/licenses/old-licenses/gpl-2.0.html.
+%#
+%#
+%# CONTRIBUTION SUBMISSION POLICY:
+%#
+%# (The following paragraph is not intended to limit the rights granted
+%# to you to modify and distribute this software under the terms of
+%# the GNU General Public License and is only of importance to you if
+%# you choose to contribute your changes and enhancements to the
+%# community by submitting them to Best Practical Solutions, LLC.)
+%#
+%# By intentionally submitting any modifications, corrections or
+%# derivatives to this work, or any other work intended for use with
+%# Request Tracker, to Best Practical Solutions, LLC, you confirm that
+%# you are the copyright holder for those contributions and you grant
+%# Best Practical Solutions,  LLC a nonexclusive, worldwide, irrevocable,
+%# royalty-free, perpetual, license to use, copy, create derivative
+%# works based on those contributions, and sublicense and distribute
+%# those contributions and any derivatives thereof.
+%#
+%# END BPS TAGGED BLOCK }}}
+<table>
+% for my $type (@display) {
+  <tr class="<%$type%><% $clone{$type} || $Object->$type->Count ? q{} : q{ unset-field}%>">
+    <td class="labeltop">
+      <& ShowRelationLabel, Object => $Object, Label => $labels{$type}.':', Relation => $type &>
+%     if ($clone{$type}) {
+        <span class="create">(<a href="<% $clone{$type} %>"><% loc('Create') %></a>)</span>
+%     }
+    </td>
+    <td class="value">
+      <& ShowLinksOfType, Object => $Object, Type => $type, Recurse => ($type eq 'Members') &>
+    </td>
+  </tr>
+% }
+
+% # Allow people to add more rows to the table
+% $m->callback( %ARGS );
+  <& /Elements/ShowCustomFields, Object => $Object, Grouping => 'Links', Table => 0 &>
+
+</table>
+
+% if ($Object->isa('RT::Ticket')) {
+  <form action="<% RT->Config->Get('WebPath') ."/Helpers/SpawnLinkedTicket" %>" name="SpawnLinkedTicket">
+    <input type="hidden" name="CloneTicket" value="<% $Object->id %>">
+    <input type="submit" value="<&|/l&>Create</&>" name="SpawnLinkedTicket">
+    <select name="LinkType">
+      <option value="DependsOn-new"><% loc('Depends on') %></option>
+      <option value="new-DependsOn"><% loc('Depended on by') %></option>
+      <option value="MemberOf-new"><% loc('Parents') %></option>
+      <option value="new-MemberOf"><% loc('Children') %></option>
+      <option value="RefersTo-new"><% loc('Refers to') %></option>
+      <option value="new-RefersTo"><% loc('Referred to by') %></option>
+    </select>
+    <&|/l&>Ticket in</&>
+    <& /Elements/SelectQueue, ShowNullOption => 0, Name => 'CloneQueue' &>
+  </form>
+% }
+<%INIT>
+my @display = qw(DependsOn DependedOnBy MemberOf Members RefersTo ReferredToBy);
+$m->callback( %ARGS, CallbackName => 'ChangeDisplay', display => \@display );
+my %labels  = (
+    DependsOn       => loc('Depends on'),
+    DependedOnBy    => loc('Depended on by'),
+    MemberOf        => loc('Parents'),
+    Members         => loc('Children'),
+    RefersTo        => loc('Refers to'),
+    ReferredToBy    => loc('Referred to by'),
+);
+my %clone;
+
+if (    $Object->isa("RT::Ticket")
+    and $Object->QueueObj->CurrentUserHasRight('CreateTicket'))
+{
+    my $id = $Object->id;
+    my $path
+        = RT->Config->Get('WebPath')
+        . '/Ticket/Create.html?Queue='
+        . $Object->Queue
+        . '&CloneTicket='
+        . $id;
+
+    for my $relation (@display) {
+        my $mode  = $RT::Link::TYPEMAP{$relation}->{Mode};
+        my $type  = $RT::Link::TYPEMAP{$relation}->{Type};
+        my $field = $mode eq 'Base' ? 'new-' . $type : $type . '-new';
+        my @copy  = ($id);
+
+        # Canonicalized type captures both directions
+        if ($type eq "RefersTo") {
+            my $other = "Local" . $mode;
+            push @copy, map { $_->$other() } @{ $Object->$relation->ItemsArrayRef };
+        }
+
+        $clone{$relation} = "$path&$field=" . join('%20', grep { $_ } @copy);
+    }
+}
+</%INIT>
+<%ARGS>
+$Object
+</%ARGS>
