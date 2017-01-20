@@ -1,2 +1,0 @@
-ALTER TABLE Articles ADD COLUMN Disabled smallint NOT NULL DEFAULT 0;
-UPDATE ACL SET RightName='DisableArticle' WHERE RightName='DeleteArticle';

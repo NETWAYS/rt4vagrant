@@ -1,1 +1,0 @@
-ALTER TABLE CustomFields ADD COLUMN EntryHint VARCHAR(255) NULL;

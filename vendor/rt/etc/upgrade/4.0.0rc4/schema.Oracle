@@ -1,1 +1,0 @@
-ALTER TABLE Users MODIFY Password VARCHAR2(256);

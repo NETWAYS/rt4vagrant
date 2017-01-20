@@ -1,3 +1,0 @@
-UPDATE Groups SET Name = Type
-WHERE Domain IN ('ACLEquivalence', 'SystemInternal') OR Domain LIKE '%-Role';
-

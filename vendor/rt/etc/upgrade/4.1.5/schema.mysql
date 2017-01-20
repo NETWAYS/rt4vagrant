@@ -1,2 +1,0 @@
-# Template column
-ALTER TABLE Scrips CHANGE Template Template varchar(200) NOT NULL;

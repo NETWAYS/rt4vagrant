@@ -1,1 +1,0 @@
-ALTER TABLE Templates DROP( Language, TranslationOf );

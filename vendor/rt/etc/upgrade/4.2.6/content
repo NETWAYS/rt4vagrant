@@ -1,9 +1,0 @@
-use strict;
-use warnings;
-
-our @ScripActions = (
-    { Name        => 'Notify Owner or AdminCcs',                         # loc
-      Description => 'Sends mail to the Owner if set, otherwise administrative Ccs',    # loc
-      ExecModule  => 'NotifyOwnerOrAdminCc',
-    },
-);

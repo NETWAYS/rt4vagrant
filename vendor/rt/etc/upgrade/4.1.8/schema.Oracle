@@ -1,2 +1,0 @@
-ALTER TABLE Tickets ADD IsMerged NUMBER(11,0) DEFAULT NULL NULL;
-UPDATE Tickets SET IsMerged = 1 WHERE id != EffectiveId;

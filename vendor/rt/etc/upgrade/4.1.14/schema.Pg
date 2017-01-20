@@ -1,3 +1,0 @@
-ALTER TABLE Scrips
-    DROP COLUMN ConditionRules,
-    DROP COLUMN ActionRules;
