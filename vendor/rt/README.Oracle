@@ -1,0 +1,40 @@
+On RT 3.8.2 and later, RT deployment for Oracle databases is very
+straightforward.
+
+You don't need to configure Oracle beforehand. During installation
+a user is created and all RT's objects are created in his schema.
+The user is created with the following parameters:
+
+    CREATE USER <DatabaseUser> IDENTIFIED BY <DatabasePassword>
+        DEFAULT TABLESPACE USERS TEMPORARY TABLESPACE TEMP
+        QUOTA UNLIMITED ON USERS
+
+And the user is also granted 'CONNECT' and 'RESOURCE'. It's up to you
+to do decide how to manage users, change quotas, table spaces, etc.
+
+RT has an option $DatabaseName which is used to define the SID of
+the Oracle database. You don't have to set up the TWO_TASK environment
+variable or any helper files for establishing connections.
+
+Example:
+
+    ./configure \
+        --with-db-type=Oracle \
+        --with-db-database=XE \
+        --with-db-host=192.168.0.1 \
+        --with-db-dba=system \
+        --with-db-rt-user=rtdb1 \
+        --with-db-rt-pass=rtdb1secret \
+        ... other configure options ...
+
+That should be enough to get you started on Oracle, but to complete
+installation you must follow the general instructions in the README file.
+
+As with all databases it is important to analyze the schema and get
+current statistics after every significant dataset change.  Oracle's
+cost-based optimizer can provide particularly bad performance when the
+schema statistics are inaccurate.  To analyze the schema of the user
+called RT, execute the following from within sqlplus:
+
+  execute dbms_utility.analyze_schema( 'RT', 'estimate');
+

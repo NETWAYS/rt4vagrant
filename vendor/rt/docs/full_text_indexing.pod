@@ -1,0 +1,283 @@
+=head1 NAME
+
+Full text indexing in RT
+
+=head1 LIMITATIONS
+
+While all of the below solutions can search for Unicode characters, they
+are not otherwise Unicode aware, and do no case folding, normalization,
+or the like.  That is, a string that contains C<U+0065 LATIN SMALL
+LETTER E> followed by C<U+0301 COMBINING ACUTE ACCENT> will not match a
+search for C<U+00E9 LATIN SMALL LETTER E WITH ACUTE>.  They also only
+know how to tokenize C<latin-1>-ish languages where words are separated
+by whitespace or similar characters; as such, support for searching for
+Japanese and Chinese content is extremely limited.
+
+=head1 POSTGRES
+
+=head2 Creating and configuring the index
+
+Postgres 8.3 and above support full-text searching natively; to set up
+the required C<ts_vector> column, and create either a C<GiN> or C<GiST>
+index on it, run:
+
+    /opt/rt4/sbin/rt-setup-fulltext-index
+
+If you have a non-standard database administrator username or password,
+you may need to pass the C<--dba> or C<--dba-password> options:
+
+    /opt/rt4/sbin/rt-setup-fulltext-index --dba postgres --dba-password secret
+
+This will then tokenize and index all existing attachments in your
+database; it may take quite a while if your database already has a large
+number of tickets in it.
+
+Finally, it will output an appropriate C<%FullTextSearch> configuration
+to add to your F<RT_SiteConfig.pm>; you will need to restart your
+webserver after making these changes.
+
+
+=head2 Updating the index
+
+To keep the index up-to-date, you will need to run:
+
+    /opt/rt4/sbin/rt-fulltext-indexer
+
+...at regular intervals.  By default, this will only tokenize up to 200
+tickets at a time; you can adjust this upwards by passing C<--limit
+500>.  Larger batch sizes will take longer and consume more memory.
+
+If there is already an instances of C<rt-fulltext-indexer> running, new
+ones will exit abnormally (with exit code 1) and the error message
+"rt-fulltext-indexer is already running."  You can suppress this message
+and end those processes normally (with exit code 0) using the C<--quiet>
+option; this is particularly useful when running the command via
+C<cron>:
+
+    /opt/rt4/sbin/rt-fulltext-indexer --quiet
+
+=head1 MYSQL
+
+On MySQL, full-text search can either be done using native support
+(which may use MyISAM tables on pre-5.6 versions of MySQL), or RT can
+integrate with the external Sphinx full-text search engine.
+
+=head2 Native MySQL
+
+As RT marks attachment data as C<BINARY>, MySQL cannot index this
+content without creating an additional table.  To create the required
+table (which is InnoDB on versions of MySQL which support it), run:
+
+    /opt/rt4/sbin/rt-setup-fulltext-index
+
+If you have a non-standard database administrator username or password,
+you may need to pass the C<--dba> or C<--dba-password> options:
+
+    /opt/rt4/sbin/rt-setup-fulltext-index --dba root --dba-password secret
+
+This will then tokenize and index all existing attachments in your
+database; it may take quite a while if your database already has a large
+number of tickets in it.
+
+Finally, it will output an appropriate C<%FullTextSearch> configuration
+to add to your F<RT_SiteConfig.pm>; you will need to restart your
+webserver after making these changes.
+
+
+=head3 Updating the index
+
+To keep the index up-to-date, you will need to run:
+
+    /opt/rt4/sbin/rt-fulltext-indexer
+
+...at regular intervals.  By default, this will only tokenize up to 200
+tickets at a time; you can adjust this upwards by passing C<--limit
+500>.  Larger batch sizes will take longer and consume more memory.
+
+If there is already an instances of C<rt-fulltext-indexer> running, new
+ones will exit abnormally (with exit code 1) and the error message
+"rt-fulltext-indexer is already running."  You can suppress this message
+and end those processes normally (with exit code 0) using the C<--quiet>
+option; this is particularly useful when running the command via
+C<cron>:
+
+    /opt/rt4/sbin/rt-fulltext-indexer --quiet
+
+=head3 Caveats
+
+Searching is done in "boolean mode."  As such, the TicketSQL query
+C<Content LIKE 'winter 2014'> will return tickets with transactions that
+contain I<either> word.  To find transactions which contain both (but
+not necessarily adjacent), use C<Content LIKE '+winter +2014'>.  To find
+transactions containing the precise phrase, use C<Content LIKE '"winter
+2014">.
+
+See the mysql documentation, at
+L<http://dev.mysql.com/doc/refman/5.6/en/fulltext-boolean.html>, for a
+list of the full capabilities.
+
+
+=head2 MySQL with Sphinx
+
+RT can also integrate with the external Sphinx engine, available from
+L<http://sphinxsearch.com>.  Unfortunately, Sphinx integration (using
+SphinxSE) does require that you recompile MySQL from source.  Most
+distribution-provided packages for MySQL do not include SphinxSE
+integration, merely the external Sphinx tools; these are not sufficient
+for RT's needs.
+
+=head3 Compiling MySQL and SphinxSE
+
+MySQL 5.1 supports adding pluggable storage engines; after compiling
+against the appropriate version of MySQL, the F<ha_sphinx.so> file is
+the only that needs to be installed in production, generally into
+C</usr/lib/mysql/plugin/>.  It can then be enabled via:
+
+    INSTALL PLUGIN Sphinx SONAME "ha_sphinx.so"
+
+Sphinx versions 0.9.x and 2.0.x are known-working versions, but later
+versions may work as well.  Complete compilation and installation
+instructions for MySQL with SphinxSE can be found at
+L<http://sphinxsearch.com/docs/current.html#sphinxse-mysql51>.
+
+=head3 Creating and configuring the index
+
+Once MySQL has been recompiled with SphinxSE, and Sphinx itself is
+installed, you may create the required SphinxSE communication table via:
+
+    /opt/rt4/sbin/rt-setup-fulltext-index
+
+If you have a non-standard database administrator username or password,
+you may need to pass the C<--dba> or C<--dba-password> options:
+
+    /opt/rt4/sbin/rt-setup-fulltext-index --dba root --dba-password secret
+
+This will also provide you with the appropriate C<%FullTextSearch>
+configuration to add to your F<RT_SiteConfig.pm>; you will need to
+restart your webserver after making these changes.  It will also print a
+sample Sphinx configuration, which should be placed in
+F</etc/sphinx.conf>, or equivalent.
+
+To fill the index, you will need to run the C<indexer> command-line tool
+provided by Sphinx:
+
+    indexer rt
+
+Finally, start the Sphinx search daemon:
+
+    searchd
+
+=head3 Updating the index
+
+To keep the index up-to-date, you will need to run:
+
+    indexer rt --rotate
+
+...at regular intervals in order to pick up new and updated attachments
+from RT's database.  Failure to do so will result in stale data.
+
+=head3 Caveats
+
+RT's integration with Sphinx relies on the use of a special index; there
+exist queries where the MySQL optimizer elects to I<not> use that index,
+instead electing to scan the table, which causes no results to be
+returned.  However, this is rare, and generally only occurs on complex
+queries.
+
+Sphinx also only returns a finite number of matches to any query; this
+number is controlled by C<max_matches> in F</etc/sphinx.conf> and
+C<%FullTextSearch>'s C<MaxMatches> in C<RT_SiteConfig.pm>, which must be
+kept in sync.  The default, set during C<rt-setup-fulltext-index>, is
+10000.  This limit may lead to false negatives in search results if the
+maximum number of matches is reached but the results returned do not
+match RT's other criteria.  However, a too-large value will notably
+degrade performance, as it adds memory allocation overhead to every
+query.
+
+Take, for example, the instance where Sphinx is configured to return a
+maximum of three results, and tickets 1, 2, 3, 4, and 5 contain the
+string "target", but only ticket 5 is in status "Open".  A search for
+C<Content LIKE 'target' AND Status = 'Open'> may return no results,
+despite ticket 5 matching those criteria, as Sphinx will only return
+tickets 1, 2, and 3 as possible matches.
+
+After index creation, altering C<MaxMatches> in C<RT_SiteConfig.pm> is
+insufficient to adjust this limit; both C<max_matches> in
+F</etc/sphinx.conf> and C<%FullTextSearch>'s C<MaxMatches> in
+C<RT_SiteConfig.pm> must be updated.
+
+=head1 ORACLE
+
+=head2 Creating and configuring the index
+
+Oracle supports full-text indexing natively using the Oracle Text
+package.  Once Oracle Text is installed and configured, run:
+
+    /opt/rt4/sbin/rt-setup-fulltext-index
+
+If you have a non-standard database administrator username or password,
+you may need to pass the C<--dba> or C<--dba-password> options:
+
+    /opt/rt4/sbin/rt-setup-fulltext-index --dba sysdba --dba-password secret
+
+This will create an Oracle CONTEXT index on the Content column in the
+Attachments table, as well as several preferences, functions and
+triggers to support this index.  The script will also output an
+appropriate C<%FullTextSearch> configuration to add to your
+F<RT_SiteConfig>.
+
+=head2 Updating the index
+
+To update the index, you will need to run the following at regular
+intervals:
+
+    /opt/rt4/sbin/rt-fulltext-indexer
+
+This, in effect, simply runs:
+
+    begin
+    ctx_ddl.sync_index('rt_fts_index', '2M');
+    end;
+
+The amount of memory used for the sync can be controlled with the
+C<--memory> option:
+
+    /opt/rt4/sbin/rt-fulltext-indexer --memory 10M
+
+If there is already an instance of C<rt-fulltext-indexer> running, new
+ones will exit abnormally (with exit code 1) and the error message
+"rt-fulltext-indexer is already running."  You can suppress this message
+and end those processes normally (with exit code 0) using the C<--quiet>
+option; this is particularly useful when running the command via
+C<cron>:
+
+    /opt/rt4/sbin/rt-fulltext-indexer --quiet
+
+Instead of being run via C<cron>, this may instead be run via a
+DBMS_JOB; read the B<Managing DML Operations for a CONTEXT Index>
+chapter of Oracle's B<Text Application Developer's Guide> for details
+how to keep the index optimized, perform garbage collection, and other
+tasks.
+
+=head1 UNINDEXED SEARCH
+
+It is also possible to enable full-text search without database indexing
+support, simply by setting the C<Enable> key of the C<%FullTextSearch>
+option to 1, while leaving C<Indexed> set to 0:
+
+    Set(%FullTextSearch,
+        Enable  => 1,
+        Indexed => 0,
+    );
+
+This is not generally suggested, as unindexed full-text searching can
+cause severe performance problems.
+
+=head1 LIMIT ATTACHMENT SIZE
+
+On some systems, very large attachments can cause memory and other
+performance issues for the indexer making it unable to complete
+indexing. See L<RT_Config.pm/"$MaxFulltextAttachmentSize"> for
+details on setting a maximum attachment size to index.
+
+=cut

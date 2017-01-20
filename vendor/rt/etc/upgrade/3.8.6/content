@@ -1,0 +1,13 @@
+use strict;
+use warnings;
+
+our @Templates = (
+    {  Queue       => 0,
+       Name        => "Forward Ticket",    # loc
+       Description => "Heading of a forwarded Ticket", # loc
+       Content => q{
+
+This is a forward of ticket #{ $Ticket->id }
+}
+    },
+);
