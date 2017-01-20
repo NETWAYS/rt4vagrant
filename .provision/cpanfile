@@ -178,3 +178,5 @@ requires 'CSS::Minifier::XS';
 requires 'HTML::FormatText::WithLinks::AndTables', '0.06';
 requires 'Data::Page::Pageset';
 requires 'Scope::Upper';
+requires 'Net::LDAP::Server::Test';
+
