@@ -25,5 +25,5 @@ Vagrant.configure(2) do |config|
     vm.vmx["numvcpus"] = "1"
   end
 
-  config.vm.provision "shell", path: ".provision/vagrant.sh"
+  config.vm.provision "shell", path: "provision/vagrant.sh"
 end

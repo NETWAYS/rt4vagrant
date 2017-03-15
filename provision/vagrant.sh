@@ -91,7 +91,7 @@ apt-get update && apt-get dist-upgrade -y -u \
     libnet-ssleay-perl \
     libnet-ldap-perl
 
-cpanm --notest --installdeps /vagrant/.provision
+cpanm --notest --installdeps /vagrant/provision
 
 RTBASE=/vagrant/vendor/rt
 RTVERSION="rt-4.4.1"
@@ -124,4 +124,4 @@ if [[ ! -f $RTBASE/var/rt4 ]]; then
     --dba-password=""
 fi
 
-cp -f /vagrant/.provision/rt/RT_SiteConfig.pm /vagrant/vendor/rt/etc
+cp -f /vagrant/provision/rt/RT_SiteConfig.pm /vagrant/vendor/rt/etc
