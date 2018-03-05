@@ -1,7 +1,7 @@
 #!/bin/bash
 
 apt-get update
-apt-get install -y --no-install-recommends \
+DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
   apt-utils \
   autoconf \
   build-essential \
@@ -11,6 +11,7 @@ apt-get install -y --no-install-recommends \
   libmysqlclient20 \
   git \
   vim \
+  postfix \
   \
   libhtml-mason-perl \
   libapache-session-perl \
