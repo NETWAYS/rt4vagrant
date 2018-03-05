@@ -26,7 +26,7 @@ This environment is configured for Parallels, VMWare and VirtualBox.
 
 ## Features
 
- * Newest RT
+ * Newest RT (default admin credentials: `root:password`)
  * Standalone Plack Server
  * SQLite database
  * Dev- and build enviroinment included
