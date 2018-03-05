@@ -1,0 +1,18 @@
+nodes = {
+  'rt4-dev' => {
+    :box_virtualbox => 'bento/ubuntu-16.04',
+    :box_parallels  => 'bento/ubuntu-16.04',
+    :box_vmware     => 'bento/ubuntu-16.04',
+    :net            => 'vagrant.dev.netways.de',
+    :hostonly       => '192.168.56.10',
+    :memory         => '2048',
+    :cpus           => '2',
+    :mac            => '020027001000',
+    :forwarded      => {
+      '80'   => '5680'
+    },
+#    :synced_folders => {
+#      '../../icingaweb2-module-graylog' => '/usr/share/icingaweb2/modules/graylog'
+#    }
+  }
+}

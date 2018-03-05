@@ -20,6 +20,9 @@ Installed Vagrant with a suitable hypervisor is required. To run:
     # On the machine
     $ sudo /vagrant/start-rt.sh
 
+
+Access http://192.168.56.10 in your browser.
+
 ## Providers
 
 This environment is configured for Parallels, VMWare and VirtualBox.
