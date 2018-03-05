@@ -95,8 +95,8 @@ Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
       # provider: vmware
       node_config.vm.provider :vmware_workstation do |vm, override|
         override.vm.box = options[:box_vmware]
-        vm.vmx["memsize"] = "2048"
-        vm.vmx["numvcpus"] = "2"
+        vm.vmx["memsize"] = options[:memory] if options[:memory]
+        vm.vmx["numvcpus"] = options[:cpus] if options[:cpus]
       end
 
       node_config.vm.provision "shell", path: "provision/vagrant.sh"
