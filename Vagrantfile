@@ -29,5 +29,5 @@ Vagrant.configure(2) do |config|
     override.vm.box = "developerinlondon/ubuntu_lxc_xenial_x64"
   end
 
-  config.vm.provision "shell", path: ".provision/vagrant.sh"
+  config.vm.provision "shell", path: "provision/vagrant.sh"
 end
