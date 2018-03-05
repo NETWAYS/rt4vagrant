@@ -30,4 +30,8 @@ Vagrant.configure(2) do |config|
   end
 
   config.vm.provision "shell", path: "provision/vagrant.sh"
+
+  if File.exists?(".Vagrantfile.local") then
+    eval(IO.read(".Vagrantfile.local"), binding)
+  end
 end
