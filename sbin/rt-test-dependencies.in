@@ -3,7 +3,7 @@
 #
 # COPYRIGHT:
 #
-# This software is Copyright (c) 1996-2016 Best Practical Solutions, LLC
+# This software is Copyright (c) 1996-2017 Best Practical Solutions, LLC
 #                                          <sales@bestpractical.com>
 #
 # (Except where explicitly superseded by other copyright notices)
@@ -136,7 +136,7 @@ Devel::StackTrace 1.19
 Digest::base
 Digest::MD5 2.27
 Digest::SHA
-Email::Address 1.897
+Email::Address 1.908
 Email::Address::List 0.02
 Encode 2.64
 Errno
@@ -199,19 +199,17 @@ set_dep( CORE => 'Symbol::Global::Name' => 0.05 ) if $] >= 5.019003;
 set_dep( CORE => CGI => 4.00 ) if $] > 5.019003;
 
 $deps{'MAILGATE'} = [ text_to_hash( << '.') ];
-Crypt::SSLeay
 Getopt::Long
 LWP::Protocol::https
-LWP::UserAgent 6.0
+LWP::UserAgent 6.02
 Mozilla::CA
-Net::SSL
 Pod::Usage
 .
 
 $deps{'CLI'} = [ text_to_hash( << '.') ];
 Getopt::Long 2.24
 HTTP::Request::Common
-LWP
+LWP 6.02
 Term::ReadKey
 Term::ReadLine
 Text::ParseWords
@@ -312,7 +310,8 @@ File::Dropbox
 my %AVOID = (
     'DBD::Oracle'       => [qw(1.23)],
     'Devel::StackTrace' => [qw(1.28 1.29)],
-    'DateTime::Locale'  => [qw(1.00 1.01)]
+    'DateTime::Locale'  => [qw(1.00 1.01)],
+    'DBD::mysql'        => [qw(4.042)],
 );
 
 check_perl_version();

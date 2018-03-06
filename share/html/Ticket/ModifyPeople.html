@@ -2,7 +2,7 @@
 %#
 %# COPYRIGHT:
 %#
-%# This software is Copyright (c) 1996-2016 Best Practical Solutions, LLC
+%# This software is Copyright (c) 1996-2017 Best Practical Solutions, LLC
 %#                                          <sales@bestpractical.com>
 %#
 %# (Except where explicitly superseded by other copyright notices)
@@ -63,6 +63,12 @@
 <&|/l&>The checked users may receive email related to this ticket depending on the action taken. Uncheck users to stop sending email to them about this ticket.</&>
 </p>
 
+<%PERL>
+my $all_recipients_checked = (grep { !$_ } values %recips) ? 0 : 1;
+</%PERL>
+<input type="checkbox" class="checkbox" id="TxnSendMailToAll" onclick="setCheckbox(this, 'checked_recipient')" <% $all_recipients_checked ? 'checked' : '' %>>
+<label for="TxnSendMailToAll"><b><% loc('All recipients') %></b></label><br />
+
 <ul>
 % for my $addr (sort keys %recips) {
   <li>
@@ -100,11 +106,11 @@ $Ticket->SquelchMailTo($_)
 
 # if we're trying to search for watchers and nothing else
 unless ($OnlySearchForPeople or $OnlySearchForGroup) {
-    push @results, ProcessTicketBasics( TicketObj => $Ticket, ARGSRef => \%ARGS);
-    push @results, ProcessTicketWatchers( TicketObj => $Ticket, ARGSRef => \%ARGS);
-    push @results, ProcessObjectCustomFieldUpdates( TicketObj => $Ticket, ARGSRef => \%ARGS );
-
-    $Ticket->ApplyTransactionBatch;
+    $Ticket->Atomic(sub{
+        push @results, ProcessTicketBasics( TicketObj => $Ticket, ARGSRef => \%ARGS);
+        push @results, ProcessTicketWatchers( TicketObj => $Ticket, ARGSRef => \%ARGS);
+        push @results, ProcessObjectCustomFieldUpdates( TicketObj => $Ticket, ARGSRef => \%ARGS );
+    });
 }
 
 # Use the ticket's scrips to figure out the new list of recipients.
@@ -131,6 +137,9 @@ for my $rule (map {@{$_->Rules}} @txns) {
 
 # Use tkt squelch list to get recipients who will NOT get mail:
 $recips{$_->Content} = 0 for $Ticket->SquelchMailTo;
+
+$Ticket->CurrentUser->AddRecentlyViewedTicket($Ticket);
+
 </%INIT>
 
 

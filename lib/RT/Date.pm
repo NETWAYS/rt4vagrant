@@ -2,7 +2,7 @@
 #
 # COPYRIGHT:
 #
-# This software is Copyright (c) 1996-2016 Best Practical Solutions, LLC
+# This software is Copyright (c) 1996-2017 Best Practical Solutions, LLC
 #                                          <sales@bestpractical.com>
 #
 # (Except where explicitly superseded by other copyright notices)
@@ -818,7 +818,7 @@ sub LocalizedDateTime
                  @_,
                );
 
-    my $dt = $self->DateTimeObj;
+    my $dt = $self->DateTimeObj(%args);
 
     # Require valid names for the format methods
     my $date_format = $args{DateFormat} =~ /^\w+$/

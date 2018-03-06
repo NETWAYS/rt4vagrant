@@ -2,7 +2,7 @@
 %#
 %# COPYRIGHT:
 %#
-%# This software is Copyright (c) 1996-2016 Best Practical Solutions, LLC
+%# This software is Copyright (c) 1996-2017 Best Practical Solutions, LLC
 %#                                          <sales@bestpractical.com>
 %#
 %# (Except where explicitly superseded by other copyright notices)
@@ -213,9 +213,24 @@ jQuery( function() {
            var target = ev.target;
            jQuery("input[name=TxnSendMailTo]").filter( function() { return this.value == target.value; } ).prop("checked",jQuery(target).prop('checked'));
        };
+
+       jQuery('#recipients div.titlebox-content').addClass('refreshing');
+       jQuery('#previewscrips div.titlebox-content').addClass('refreshing');
+
+       /* temporarily re-enable the checkboxes so they will be included in
+          payload */
+       jQuery("#recipients input[name=TxnSendMailToAll], #recipients input[name=TxnSendMailTo]").attr('disabled', false);
+       jQuery("#previewscrips input[name=TxnSendMailToAll], #previewscrips input[name=TxnSendMailTo]").attr('disabled', false);
+
+       var payload = jQuery('form[name=TicketUpdate]').serializeArray();
+
+       jQuery("#recipients input[name=TxnSendMailToAll], #recipients input[name=TxnSendMailTo]").attr('disabled', true);
+       jQuery("#previewscrips input[name=TxnSendMailToAll], #previewscrips input[name=TxnSendMailTo]").attr('disabled', true);
+
        jQuery('#recipients div.titlebox-content').load( '<% RT->Config->Get('WebPath')%>/Helpers/ShowSimplifiedRecipients',
-           jQuery('form[name=TicketUpdate]').serializeArray(),
+           payload,
            function() {
+               jQuery('#recipients div.titlebox-content').removeClass('refreshing');
                var txn_send_field = jQuery("#recipients input[name=TxnSendMailTo]");
                txn_send_field.change( syncCheckboxes );
                txn_send_field.click( function () { setCheckbox(this) } );
@@ -225,9 +240,11 @@ jQuery( function() {
                }
            }
        );
+
        jQuery('#previewscrips div.titlebox-content').load( '<% RT->Config->Get('WebPath')%>/Helpers/PreviewScrips',
-           jQuery('form[name=TicketUpdate]').serializeArray(),
+           payload,
            function() {
+               jQuery('#previewscrips div.titlebox-content').removeClass('refreshing');
                var txn_send_field = jQuery("#previewscrips input[name=TxnSendMailTo]");
                txn_send_field.change( syncCheckboxes );
                txn_send_field.click( function () { setCheckbox(this) } );
@@ -248,6 +265,12 @@ jQuery( function() {
    }
 
    jQuery("#ticket-update-metadata :input, #UpdateCc, #UpdateBcc").change( updateScrips );
+
+   jQuery("body").on("submit", "form", function () {
+       jQuery("#recipients input[name=TxnSendMailToAll], #recipients input[name=TxnSendMailTo]").attr('disabled', false);
+       jQuery("#previewscrips input[name=TxnSendMailToAll], #previewscrips input[name=TxnSendMailTo]").attr('disabled', false);
+   });
+
 });
 </script>
 % }
@@ -338,6 +361,9 @@ if ( $ARGS{'SubmitTicket'} ) {
         $ARGS{ $field } = join ', ', map $_->format, grep defined, @emails;
     }
 }
+
+# $skip_update is provided below by reference to allow a final check to stop
+# the update and print a message for the user to fix something.
 my $skip_update = 0;
 $m->callback( CallbackName => 'BeforeUpdate', ARGSRef => \%ARGS, skip_update => \$skip_update,
               checks_failure => $checks_failure, results => \@results, TicketObj => $TicketObj );
@@ -346,6 +372,9 @@ if ( !$checks_failure && !$skip_update && exists $ARGS{SubmitTicket} ) {
     $m->callback( Ticket => $TicketObj, ARGSRef => \%ARGS, CallbackName => 'BeforeDisplay' );
     return $m->comp('Display.html', TicketObj => $TicketObj, %ARGS);
 }
+
+$TicketObj->CurrentUser->AddRecentlyViewedTicket($TicketObj);
+
 </%INIT>
 
 <%ARGS>

@@ -2,7 +2,7 @@
 %#
 %# COPYRIGHT:
 %#
-%# This software is Copyright (c) 1996-2016 Best Practical Solutions, LLC
+%# This software is Copyright (c) 1996-2017 Best Practical Solutions, LLC
 %#                                          <sales@bestpractical.com>
 %#
 %# (Except where explicitly superseded by other copyright notices)
@@ -166,6 +166,9 @@ if ( $self->{'Encrypt'} ) {
         $TicketObj = RT::Ticket->new( $session{'CurrentUser'} );
         @recipients = map {$_->Recipients} $TicketObj->DryRun(
             sub { CreateTicket( %$self, TicketObj => $TicketObj ); } );
+    }
+    elsif ( $Operation eq 'Forward' ) {
+        push @recipients, RT::EmailParser->ParseEmailAddress( $self->{$_} || '' ) for qw(To Cc Bcc);
     }
     else {
         $RT::Logger->crit('Incorrect operation: '. $Operation );

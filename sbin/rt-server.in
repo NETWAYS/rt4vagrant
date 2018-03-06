@@ -3,7 +3,7 @@
 #
 # COPYRIGHT:
 #
-# This software is Copyright (c) 1996-2016 Best Practical Solutions, LLC
+# This software is Copyright (c) 1996-2017 Best Practical Solutions, LLC
 #                                          <sales@bestpractical.com>
 #
 # (Except where explicitly superseded by other copyright notices)
@@ -171,6 +171,9 @@ rt-server - RT standalone server
 
     # runs prefork server listening on port 8080, requires Starlet
     rt-server --port 8080
+
+    # runs prefork server listening on port 8080 at /rt
+    rt-server --port 8080 --webpath /rt
 
     # runs server listening on port 8080
     rt-server --server Standalone --port 8080

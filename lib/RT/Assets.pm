@@ -2,7 +2,7 @@
 #
 # COPYRIGHT:
 #
-# This software is Copyright (c) 1996-2016 Best Practical Solutions, LLC
+# This software is Copyright (c) 1996-2017 Best Practical Solutions, LLC
 #                                          <sales@bestpractical.com>
 #
 # (Except where explicitly superseded by other copyright notices)
@@ -241,7 +241,7 @@ sub OrderByCols {
     my $class = $self->_RoleGroupClass;
 
     for my $row (@_) {
-        if ($row->{FIELD} =~ /^CF\.(?:\{(.*)\}|(.*))$/) {
+        if ($row->{FIELD} =~ /^(?:CF|CustomField)\.(?:\{(.*)\}|(.*))$/) {
             my $name = $1 || $2;
             my $cf = RT::CustomField->new( $self->CurrentUser );
             $cf->LoadByNameAndCatalog(

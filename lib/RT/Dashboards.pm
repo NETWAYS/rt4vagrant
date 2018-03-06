@@ -2,7 +2,7 @@
 #
 # COPYRIGHT:
 #
-# This software is Copyright (c) 1996-2016 Best Practical Solutions, LLC
+# This software is Copyright (c) 1996-2017 Best Practical Solutions, LLC
 #                                          <sales@bestpractical.com>
 #
 # (Except where explicitly superseded by other copyright notices)
@@ -102,6 +102,22 @@ sub LimitToPrivacy {
     } else {
         $RT::Logger->error("Could not load object $privacy");
     }
+}
+
+=head2 SortDashboards
+
+Sort the list of dashboards. The default is to sort alphabetically.
+
+=cut
+
+sub SortDashboards {
+    my $self = shift;
+
+    # Work directly with the internal data structure since Dashboards
+    # aren't fully backed by a DB table and can't support typical OrderBy, etc.
+    my @sorted = sort { lcfirst($a->Name) cmp lcfirst($b->Name) } @{$self->{'objects'}};
+    @{$self->{'objects'}} = @sorted;
+    return;
 }
 
 sub ColumnMapClassName {

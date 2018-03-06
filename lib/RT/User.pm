@@ -2,7 +2,7 @@
 #
 # COPYRIGHT:
 #
-# This software is Copyright (c) 1996-2016 Best Practical Solutions, LLC
+# This software is Copyright (c) 1996-2017 Best Practical Solutions, LLC
 #                                          <sales@bestpractical.com>
 #
 # (Except where explicitly superseded by other copyright notices)
@@ -84,6 +84,7 @@ use RT::Principals;
 use RT::ACE;
 use RT::Interface::Email;
 use Text::Password::Pronounceable;
+use RT::Util;
 
 sub _OverlayAccessible {
     {
@@ -354,6 +355,12 @@ sub _SetPrivileged {
         }
         my ($status, $msg) = $priv->_AddMember( InsideTransaction => 1, PrincipalId => $principal);
         if ($status) {
+            $self->_NewTransaction(
+                Type     => 'Set',
+                Field    => 'Privileged',
+                NewValue => 1,
+                OldValue => 0,
+            );
             return (1, $self->loc("That user is now privileged"));
         } else {
             return (0, $msg);
@@ -374,6 +381,12 @@ sub _SetPrivileged {
         }
         my ($status, $msg) = $unpriv->_AddMember( InsideTransaction => 1, PrincipalId => $principal);
         if ($status) {
+            $self->_NewTransaction(
+                Type     => 'Set',
+                Field    => 'Privileged',
+                NewValue => 0,
+                OldValue => 1,
+            );
             return (1, $self->loc("That user is now unprivileged"));
         } else {
             return (0, $msg);
@@ -1087,11 +1100,17 @@ sub IsPassword {
         # If it's a new-style (>= RT 4.0) password, it starts with a '!'
         my (undef, $method, @rest) = split /!/, $stored;
         if ($method eq "bcrypt") {
-            return 0 unless $self->_GeneratePassword_bcrypt($value, @rest) eq $stored;
+            return 0 unless RT::Util::constant_time_eq(
+                $self->_GeneratePassword_bcrypt($value, @rest),
+                $stored
+            );
             # Upgrade to a larger number of rounds if necessary
             return 1 unless $rest[0] < RT->Config->Get('BcryptCost');
         } elsif ($method eq "sha512") {
-            return 0 unless $self->_GeneratePassword_sha512($value, @rest) eq $stored;
+            return 0 unless RT::Util::constant_time_eq(
+                $self->_GeneratePassword_sha512($value, @rest),
+                $stored
+            );
         } else {
             $RT::Logger->warn("Unknown hash method $method");
             return 0;
@@ -1101,16 +1120,28 @@ sub IsPassword {
         my $hash = MIME::Base64::decode_base64($stored);
         # Decoding yields 30 byes; first 4 are the salt, the rest are substr(SHA256,0,26)
         my $salt = substr($hash, 0, 4, "");
-        return 0 unless substr(Digest::SHA::sha256($salt . Digest::MD5::md5(Encode::encode( "UTF-8", $value))), 0, 26) eq $hash;
+        return 0 unless RT::Util::constant_time_eq(
+            substr(Digest::SHA::sha256($salt . Digest::MD5::md5(Encode::encode( "UTF-8", $value))), 0, 26),
+            $hash, 1
+        );
     } elsif (length $stored == 32) {
         # Hex nonsalted-md5
-        return 0 unless Digest::MD5::md5_hex(Encode::encode( "UTF-8", $value)) eq $stored;
+        return 0 unless RT::Util::constant_time_eq(
+            Digest::MD5::md5_hex(Encode::encode( "UTF-8", $value)),
+            $stored
+        );
     } elsif (length $stored == 22) {
         # Base64 nonsalted-md5
-        return 0 unless Digest::MD5::md5_base64(Encode::encode( "UTF-8", $value)) eq $stored;
+        return 0 unless RT::Util::constant_time_eq(
+            Digest::MD5::md5_base64(Encode::encode( "UTF-8", $value)),
+            $stored
+        );
     } elsif (length $stored == 13) {
         # crypt() output
-        return 0 unless crypt(Encode::encode( "UTF-8", $value), $stored) eq $stored;
+        return 0 unless RT::Util::constant_time_eq(
+            crypt(Encode::encode( "UTF-8", $value), $stored),
+            $stored
+        );
     } else {
         $RT::Logger->warning("Unknown password form");
         return 0;
@@ -1206,19 +1237,20 @@ sub GenerateAuthString {
 
 =head3 ValidateAuthString
 
-Takes auth string and protected string. Returns true is protected string
+Takes auth string and protected string. Returns true if protected string
 has been protected by user's L</AuthToken>. See also L</GenerateAuthString>.
 
 =cut
 
 sub ValidateAuthString {
     my $self = shift;
-    my $auth_string = shift;
+    my $auth_string_to_validate = shift;
     my $protected = shift;
 
     my $str = Encode::encode( "UTF-8", $self->AuthToken . $protected );
+    my $valid_auth_string = substr(Digest::MD5::md5_hex($str),0,16);
 
-    return $auth_string eq substr(Digest::MD5::md5_hex($str),0,16);
+    return RT::Util::constant_time_eq( $auth_string_to_validate, $valid_auth_string );
 }
 
 =head2 SetDisabled
@@ -2042,6 +2074,64 @@ sub ToggleBookmark {
     return $is_bookmarked;
 }
 
+=head2 RecentlyViewedTickets TICKET
+
+Returns a list of two-element (ticket id, timestamp) array references ordered by recently viewed first.
+
+=cut
+
+sub RecentlyViewedTickets {
+    my $self = shift;
+    my $content = $self->FirstAttribute('RecentlyViewedTickets');
+    return $content ? @{$content->Content} : ();
+}
+
+=head2 AddRecentlyViewedTicket TICKET
+
+Takes an RT::Ticket object and adds it to the current user's RecentlyViewedTickets
+
+=cut
+
+sub AddRecentlyViewedTicket {
+    my $self   = shift;
+    my $ticket = shift;
+
+    my $maxCount = 10; #The max number of tickets to keep
+
+    #Nothing to do without a ticket
+    return unless $ticket->Id;
+
+    my @recentTickets;
+    my $content = $self->FirstAttribute('RecentlyViewedTickets');
+    $content = $content ? $content->Content : [];
+    if (defined $content) {
+        @recentTickets = @$content;
+    }
+
+    my @tickets;
+    my $i = 0;
+    for (@recentTickets) {
+        my ($ticketId, $timestamp) = @$_;
+        
+        #Skip the ticket if it exists in recents already
+        if ($ticketId != $ticket->Id) {
+            push @tickets, $_;
+            if ($i >= $maxCount - 1) {
+                last;
+            }
+        }
+        $i++;
+    }
+
+    #Add the new ticket
+    unshift @tickets, [$ticket->Id, time()];
+
+    $self->SetAttribute(
+        Name    => 'RecentlyViewedTickets',
+        Content => \@tickets,
+    );
+}
+
 =head2 Create PARAMHASH
 
 Create takes a hash of values and creates a row in the database:
@@ -2685,6 +2775,12 @@ sub __DependsOn {
 # Cleanup user's membership
     $objs = RT::GroupMembers->new( $self->CurrentUser );
     $objs->Limit( FIELD => 'MemberId', VALUE => $self->Id );
+    push( @$list, $objs );
+
+# Cleanup user's membership transactions
+    $objs = RT::Transactions->new( $self->CurrentUser );
+    $objs->Limit( FIELD => 'Type', OPERATOR => 'IN', VALUE => ['AddMember', 'DeleteMember'] );
+    $objs->Limit( FIELD => 'Field', VALUE => $self->PrincipalObj->id, ENTRYAGGREGATOR => 'AND' );
     push( @$list, $objs );
 
     $deps->_PushDependencies(

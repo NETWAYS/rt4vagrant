@@ -2,7 +2,7 @@
 #
 # COPYRIGHT:
 #
-# This software is Copyright (c) 1996-2016 Best Practical Solutions, LLC
+# This software is Copyright (c) 1996-2017 Best Practical Solutions, LLC
 #                                          <sales@bestpractical.com>
 #
 # (Except where explicitly superseded by other copyright notices)
@@ -72,6 +72,7 @@ use Digest::MD5 ();
 use List::MoreUtils qw();
 use JSON qw();
 use Plack::Util;
+use HTTP::Status qw();
 
 =head2 SquishedCSS $style
 
@@ -1448,7 +1449,7 @@ sub IsCompCSRFWhitelisted {
     # golden.  This acts on the presumption that external forms may
     # hardcode a username and password -- if a malicious attacker knew
     # both already, CSRF is the least of your problems.
-    my $AllowLoginCSRF = not RT->Config->Get('RestrictReferrerLogin');
+    my $AllowLoginCSRF = not RT->Config->Get('RestrictLoginReferrer');
     if ($AllowLoginCSRF and defined($args{user}) and defined($args{pass})) {
         my $user_obj = RT::CurrentUser->new();
         $user_obj->Load($args{user});
@@ -1666,7 +1667,7 @@ sub MaybeShowInterstitialCSRFPage {
     my $token = StoreRequestToken($ARGS);
     $HTML::Mason::Commands::m->comp(
         '/Elements/CSRF',
-        OriginalURL => RT->Config->Get('WebPath') . $HTML::Mason::Commands::r->path_info,
+        OriginalURL => RT->Config->Get('WebBaseURL') . RT->Config->Get('WebPath') . $HTML::Mason::Commands::r->path_info,
         Reason => HTML::Mason::Commands::loc( $msg, @loc ),
         Token => $token,
     );
@@ -2038,6 +2039,10 @@ sub Abort {
     my $why  = shift;
     my %args = @_;
 
+    $args{Code} //= HTTP::Status::HTTP_OK;
+
+    $r->headers_out->{'Status'} = $args{Code} . ' ' . HTTP::Status::status_message($args{Code});
+
     if (   $session{'ErrorDocument'}
         && $session{'ErrorDocumentType'} )
     {
@@ -2140,11 +2145,11 @@ sub CreateTicket {
 
     my $Queue = RT::Queue->new( $current_user );
     unless ( $Queue->Load( $ARGS{'Queue'} ) ) {
-        Abort('Queue not found');
+        Abort('Queue not found', Code => HTTP::Status::HTTP_NOT_FOUND);
     }
 
     unless ( $Queue->CurrentUserHasRight('CreateTicket') ) {
-        Abort('You have no permission to create tickets in that queue.');
+        Abort('You have no permission to create tickets in that queue.', Code => HTTP::Status::HTTP_FORBIDDEN);
     }
 
     my $due;
@@ -2184,7 +2189,7 @@ sub CreateTicket {
         push @attachments, grep $_, map $tmp->{$_}, sort keys %$tmp;
 
         delete $session{'Attachments'}{ $ARGS{'Token'} || '' }
-            unless $ARGS{'KeepAttachments'};
+            unless $ARGS{'KeepAttachments'} or $Ticket->{DryRun};
         $session{'Attachments'} = $session{'Attachments'}
             if @attachments;
     }
@@ -2257,7 +2262,7 @@ sub CreateTicket {
 
     push( @Actions, split( "\n", $ErrMsg ) );
     unless ( $Ticket->CurrentUserHasRight('ShowTicket') ) {
-        Abort( "No permission to view newly created ticket #" . $Ticket->id . "." );
+        Abort( "No permission to view newly created ticket #" . $Ticket->id . ".", Code => HTTP::Status::HTTP_FORBIDDEN );
     }
     return ( $Ticket, @Actions );
 
@@ -2282,13 +2287,13 @@ sub LoadTicket {
     }
 
     unless ($id) {
-        Abort("No ticket specified");
+        Abort("No ticket specified", Code => HTTP::Status::HTTP_BAD_REQUEST);
     }
 
     my $Ticket = RT::Ticket->new( $session{'CurrentUser'} );
     $Ticket->Load($id);
     unless ( $Ticket->id ) {
-        Abort("Could not load ticket $id");
+        Abort("Could not load ticket $id", Code => HTTP::Status::HTTP_NOT_FOUND);
     }
     return $Ticket;
 }
@@ -2320,7 +2325,8 @@ sub ProcessUpdateMessage {
         push @attachments, grep $_, map $tmp->{$_}, sort keys %$tmp;
 
         delete $session{'Attachments'}{ $args{'ARGSRef'}{'Token'} || '' }
-            unless $args{'KeepAttachments'};
+            unless $args{'KeepAttachments'}
+            or ($args{TicketObj} and $args{TicketObj}{DryRun});
         $session{'Attachments'} = $session{'Attachments'}
             if @attachments;
     }
@@ -2930,7 +2936,6 @@ sub ProcessTicketBasics {
         FinalPriority
         Priority
         TimeEstimated
-        TimeWorked
         TimeLeft
         Type
         Status
@@ -2959,6 +2964,12 @@ sub ProcessTicketBasics {
         Object        => $TicketObj,
         ARGSRef       => $ARGSRef,
     );
+
+    if ( defined($ARGSRef->{'TimeWorked'}) && ($ARGSRef->{'TimeWorked'} || 0) != $TicketObj->TimeWorked ) {
+        my ( $val, $msg, $txn ) = $TicketObj->SetTimeWorked( $ARGSRef->{'TimeWorked'} );
+        push( @results, $msg );
+        $txn->UpdateCustomFields( %$ARGSRef) if $txn;
+    }
 
     # We special case owner changing, so we can use ForceOwnerChange
     if ( $ARGSRef->{'Owner'}
@@ -3084,6 +3095,37 @@ sub ProcessTicketReminders {
     return @results;
 }
 
+sub _ValidateConsistentCustomFieldValues {
+    my $cf = shift;
+    my $args = shift;
+    my $ok = 1;
+
+    my @groupings = sort keys %$args;
+    return ($ok, undef) unless @groupings;
+    my $default_grouping = $groupings[0]; # Default to use if multiple are submitted
+
+    if (@groupings > 1) {
+        # Check for consistency, in case of JS fail
+        for my $key (qw/AddValue Value Values DeleteValues DeleteValueIds/) {
+            my $base = $args->{$groupings[0]}{$key};
+            $base = [ $base ] unless ref $base;
+            for my $grouping (@groupings[1..$#groupings]) {
+                my $other = $args->{$grouping}{$key};
+                $other = [ $other ] unless ref $other;
+                next unless grep {$_} List::MoreUtils::pairwise {
+                    no warnings qw(uninitialized);
+                    $a ne $b
+                } @{$base}, @{$other};
+
+                RT::Logger->warn("CF $cf submitted with multiple differing values");
+                $ok = 0;
+            }
+        }
+    }
+
+    return ($ok, $default_grouping);
+}
+
 sub ProcessObjectCustomFieldUpdates {
     my %args    = @_;
     my $ARGSRef = $args{'ARGSRef'};
@@ -3099,6 +3141,9 @@ sub ProcessObjectCustomFieldUpdates {
             $Object = $class->new( $session{'CurrentUser'} )
                 unless $Object && ref $Object eq $class;
 
+            # skip if we have no object to update
+            next unless $id || $Object->id;
+
             $Object->Load($id) unless ( $Object->id || 0 ) == $id;
             unless ( $Object->id ) {
                 $RT::Logger->warning("Couldn't load object $class #$id");
@@ -3113,34 +3158,21 @@ sub ProcessObjectCustomFieldUpdates {
                     $RT::Logger->warning("Couldn't load custom field #$cf");
                     next;
                 }
-                my @groupings = sort keys %{ $custom_fields_to_mod{$class}{$id}{$cf} };
-                if (@groupings > 1) {
-                    # Check for consistency, in case of JS fail
-                    for my $key (qw/AddValue Value Values DeleteValues DeleteValueIds/) {
-                        my $base = $custom_fields_to_mod{$class}{$id}{$cf}{$groupings[0]}{$key};
-                        $base = [ $base ] unless ref $base;
-                        for my $grouping (@groupings[1..$#groupings]) {
-                            my $other = $custom_fields_to_mod{$class}{$id}{$cf}{$grouping}{$key};
-                            $other = [ $other ] unless ref $other;
-                            warn "CF $cf submitted with multiple differing values"
-                                if grep {$_} List::MoreUtils::pairwise {
-                                    no warnings qw(uninitialized);
-                                    $a ne $b
-                                } @{$base}, @{$other};
-                        }
-                    }
-                    # We'll just be picking the 1st grouping in the hash, alphabetically
-                }
+
+                # In the case of inconsistent CFV submission,
+                # we'll get the 1st grouping in the hash, alphabetically
+                my ($ret, $grouping) = _ValidateConsistentCustomFieldValues($cf, $custom_fields_to_mod{$class}{$id}{$cf});
+
                 push @results,
                     _ProcessObjectCustomFieldUpdates(
                         Prefix => GetCustomFieldInputNamePrefix(
                             Object      => $Object,
                             CustomField => $CustomFieldObj,
-                            Grouping    => $groupings[0],
+                            Grouping    => $grouping,
                         ),
                         Object      => $Object,
                         CustomField => $CustomFieldObj,
-                        ARGS        => $custom_fields_to_mod{$class}{$id}{$cf}{ $groupings[0] },
+                        ARGS        => $custom_fields_to_mod{$class}{$id}{$cf}{ $grouping },
                     );
             }
         }
@@ -3150,14 +3182,21 @@ sub ProcessObjectCustomFieldUpdates {
 
 sub _ParseObjectCustomFieldArgs {
     my $ARGSRef = shift || {};
+    my %args = (
+        IncludeBulkUpdate => 0,
+        @_,
+    );
     my %custom_fields_to_mod;
 
     foreach my $arg ( keys %$ARGSRef ) {
 
         # format: Object-<object class>-<object id>-CustomField[:<grouping>]-<CF id>-<commands>
-        # or: Bulk-<Add or Delete>-CustomField[:<grouping>]-<CF id>-<commands>
         # you can use GetCustomFieldInputName to generate the complement input name
-        next unless $arg =~ /^(?:Bulk-(?:Add|Delete)|Object-([\w:]+)-(\d*))-CustomField(?::(\w+))?-(\d+)-(.*)$/;
+        # or if IncludeBulkUpdate: Bulk-<Add or Delete>-CustomField[:<grouping>]-<CF id>-<commands>
+        next unless $arg =~ /^Object-([\w:]+)-(\d*)-CustomField(?::(\w+))?-(\d+)-(.*)$/
+                 || ($args{IncludeBulkUpdate} && $arg =~ /^Bulk-(?:Add|Delete)-()()CustomField(?::(\w+))?-(\d+)-(.*)$/);
+        # need two empty groups because we must consume $1 and $2 with empty
+        # class and ID
 
         # For each of those objects, find out what custom fields we want to work with.
         #                   Class     ID     CF  grouping command
@@ -3360,7 +3399,14 @@ sub ProcessObjectCustomFieldUpdatesForCreate {
                     );
             }
 
-            $parsed{"CustomField-$cfid"} = \@values if @values;
+            if (@values) {
+                if ( $class eq 'RT::Transaction' ) {
+                    $parsed{"Object-RT::Transaction--CustomField-$cfid"} = \@values;
+                }
+                else {
+                    $parsed{"CustomField-$cfid"} = \@values if @values;
+                }
+            }
         }
     }
 
@@ -3870,6 +3916,79 @@ sub ProcessColumnMapValue {
         }
         return $value;
     }
+}
+
+sub ProcessQuickCreate {
+    my %params = @_;
+    my %ARGS = %{ $params{ARGSRef} };
+    my $path = $params{Path};
+    my @results;
+
+    if ( $ARGS{'QuickCreate'} ) {
+        my $QueueObj = RT::Queue->new($session{'CurrentUser'});
+        $QueueObj->Load($ARGS{Queue}) or Abort(loc("Queue could not be loaded."));
+
+        my $CFs = $QueueObj->TicketCustomFields;
+
+        my ($ValidCFs, @msg) = $m->comp(
+            '/Elements/ValidateCustomFields',
+            CustomFields        => $CFs,
+            ARGSRef             => \%ARGS,
+            ValidateUnsubmitted => 1,
+        );
+
+        my $created;
+        if ( $ValidCFs ) {
+            my ($t, $msg) = CreateTicket(
+                Queue      => $ARGS{'Queue'},
+                Owner      => $ARGS{'Owner'},
+                Status     => $ARGS{'Status'},
+                Requestors => $ARGS{'Requestors'},
+                Content    => $ARGS{'Content'},
+                Subject    => $ARGS{'Subject'},
+            );
+            push @results, $msg;
+
+            if ( $t && $t->Id ) {
+                $created = 1;
+                if ( RT->Config->Get('DisplayTicketAfterQuickCreate', $session{'CurrentUser'}) ) {
+                    MaybeRedirectForResults(
+                        Actions   => \@results,
+                        Path      => '/Ticket/Display.html',
+                        Arguments => { id => $t->Id },
+                    );
+                }
+            }
+        }
+        else {
+            push @results, loc("Can't quickly create ticket in queue [_1] because custom fields are required.  Please finish by using the normal ticket creation page.", $QueueObj->Name);
+            push @results, @msg;
+
+            MaybeRedirectForResults(
+                Actions     => \@results,
+                Path        => "/Ticket/Create.html",
+                Arguments   => {
+                    (map { $_ => $ARGS{$_} } qw(Queue Owner Status Content Subject)),
+                    Requestors => $ARGS{Requestors},
+                    # From is set above when CFs are OK, but not here since
+                    # we're not calling CreateTicket() directly. The proper
+                    # place to set a default for From, if desired in the
+                    # future, is in CreateTicket() itself, or at least
+                    # /Ticket/Display.html (which processes
+                    # /Ticket/Create.html). From is rarely used overall.
+                },
+            );
+        }
+
+        $session{QuickCreate} = \%ARGS unless $created;
+
+        MaybeRedirectForResults(
+            Actions   => \@results,
+            Path      => $path,
+        );
+    }
+
+    return @results;
 }
 
 =head2 GetPrincipalsMap OBJECT, CATEGORIES
