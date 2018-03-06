@@ -2,7 +2,7 @@
 %#
 %# COPYRIGHT:
 %#
-%# This software is Copyright (c) 1996-2016 Best Practical Solutions, LLC
+%# This software is Copyright (c) 1996-2017 Best Practical Solutions, LLC
 %#                                          <sales@bestpractical.com>
 %#
 %# (Except where explicitly superseded by other copyright notices)
@@ -53,26 +53,28 @@ if ( $arg =~ m{^(\d+)/(\d+)} ) {
     $attach = $2;
 }
 else {
-    Abort("Corrupted attachment URL.");
+    Abort("Corrupted attachment URL.", Code => HTTP::Status::HTTP_BAD_REQUEST);
 }
 my $AttachmentObj = RT::Attachment->new( $session{'CurrentUser'} );
-$AttachmentObj->Load($attach) || Abort("Attachment '$attach' could not be loaded");
+$AttachmentObj->Load($attach) || Abort("Attachment '$attach' could not be loaded", Code => HTTP::Status::HTTP_NOT_FOUND);
 
 unless ( $AttachmentObj->id ) {
-    Abort("Bad attachment id. Couldn't find attachment '$attach'\n");
+    Abort("Bad attachment id. Couldn't find attachment '$attach'\n", Code => HTTP::Status::HTTP_NOT_FOUND);
 }
 unless ( $AttachmentObj->TransactionId() == $trans ) {
-    Abort("Bad transaction number for attachment. $trans should be". $AttachmentObj->TransactionId() . "\n");
+    Abort("Bad transaction number for attachment. $trans should be". $AttachmentObj->TransactionId() . "\n", Code => HTTP::Status::HTTP_NOT_FOUND);
 }
 
 my $content = $AttachmentObj->OriginalContent;
 my $content_type = $AttachmentObj->ContentType || 'text/plain';
 
-if ( RT->Config->Get('AlwaysDownloadAttachments') ) {
+my $attachment_regex = qr{^(image/svg\+xml|application/pdf)}i;
+if ( RT->Config->Get('AlwaysDownloadAttachments') || ($content_type =~ $attachment_regex) ) {
     $r->headers_out->{'Content-Disposition'} = "attachment";
 }
 elsif ( !RT->Config->Get('TrustHTMLAttachments') ) {
-    $content_type = 'text/plain' if ( $content_type =~ /^text\/html/i );
+    my $text_plain_regex = qr{^(text/html|application/xhtml\+xml|text/xml|application/xml)}i;
+    $content_type = 'text/plain' if ( $content_type =~ $text_plain_regex );
 }
 elsif (lc $content_type eq 'text/html') {
     # If we're trusting and serving HTML for display not download, try to do

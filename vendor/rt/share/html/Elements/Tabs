@@ -2,7 +2,7 @@
 %#
 %# COPYRIGHT:
 %#
-%# This software is Copyright (c) 1996-2016 Best Practical Solutions, LLC
+%# This software is Copyright (c) 1996-2017 Best Practical Solutions, LLC
 %#                                          <sales@bestpractical.com>
 %#
 %# (Except where explicitly superseded by other copyright notices)
@@ -130,6 +130,22 @@ my $build_admin_menu = sub {
     );
     $scrips->child( select => title => loc('Select'), path => "/Admin/Global/Scrips.html" );
     $scrips->child( create => title => loc('Create'), path => "/Admin/Scrips/Create.html?Global=1" );
+
+    my $conditions = $admin_global->child( conditions =>
+        title => loc('Conditions'),
+        description => loc('Edit system conditions'),
+        path        => '/Admin/Global/Conditions.html',
+    );
+    $conditions->child( select => title => loc('Select'), path => "/Admin/Global/Conditions.html" );
+    $conditions->child( create => title => loc('Create'), path => "/Admin/Conditions/Create.html" );
+
+    my $actions   = $admin_global->child( actions =>
+        title => loc('Actions'),
+        description => loc('Edit system actions'),
+        path        => '/Admin/Global/Actions.html',
+    );
+    $actions->child( select => title => loc('Select'), path => "/Admin/Global/Actions.html" );
+    $actions->child( create => title => loc('Create'), path => "/Admin/Actions/Create.html" );
 
     my $templates = $admin_global->child( templates =>
         title       => loc('Templates'),
@@ -480,6 +496,18 @@ my $build_admin_menu = sub {
         $tabs->child( create => title => loc('Create'), path => "/Admin/Scrips/Create.html?Global=1" );
     }
 
+    if ( $request_path =~ m{^/Admin(?:/Global)?/Conditions} ) {
+        my $tabs = PageMenu();
+        $tabs->child( select => title => loc('Select'), path => "/Admin/Global/Conditions.html" );
+        $tabs->child( create => title => loc('Create'), path => "/Admin/Conditions/Create.html" );
+    }
+
+    if ( $request_path =~ m{^/Admin(?:/Global)?/Actions} ) {
+        my $tabs = PageMenu();
+        $tabs->child( select => title => loc('Select'), path => "/Admin/Global/Actions.html" );
+        $tabs->child( create => title => loc('Create'), path => "/Admin/Actions/Create.html" );
+    }
+
     if ( $request_path =~ m{^/Admin/Global/Templates?\.html} ) {
         my $tabs = PageMenu();
         $tabs->child( select => title => loc('Select'), path => "/Admin/Global/Templates.html" );
@@ -547,7 +575,9 @@ my $build_main_nav = sub {
         if ( $status ) {
             push @dashboards, $dash;
         } else {
-            $RT::Logger->warning( "Failed to load dashboard $id: $msg" );
+            $RT::Logger->debug( "Failed to load dashboard $id: $msg, removing from menu" );
+            $home->RemoveDashboardMenuItem( DashboardId => $id, CurrentUser => $session{CurrentUser}->UserObj );
+            @{$session{'dashboards_in_menu'}} = grep { $_ != $id } @{$session{'dashboards_in_menu'}};
         }
     }
 
@@ -573,6 +603,23 @@ my $build_main_nav = sub {
     $tickets->child( simple => title => loc('Simple Search'), path => "/Search/Simple.html" );
     $tickets->child( new    => title => loc('New Search'),    path => "/Search/Build.html?NewQuery=1" );
 
+    my $recents = $tickets->child( recent => title => loc('Recently Viewed'));
+    for ($session{CurrentUser}->RecentlyViewedTickets) {
+        my ($ticketId, $timestamp) = @$_;
+        my $ticket = RT::Ticket->new($session{CurrentUser});
+        $ticket->Load($ticketId);
+        if ($ticket->Id) {
+            my $title = $ticket->Subject || loc("(No subject)");
+            if (length $title > 50) {
+                $title = substr($title, 0, 47);
+                $title =~ s/\s+$//;
+                $title .= "...";
+            }
+            $title = "#$ticketId: " . $title;
+            $recents->child( "$ticketId" => title => $title, path => "/Ticket/Display.html?id=" . $ticket->Id );
+        }
+    }
+
     $search->child( articles => title => loc('Articles'),   path => "/Articles/Article/Search.html" )
         if $session{CurrentUser}->HasRight( Right => 'ShowArticlesMenu', Object => RT->System );
 
@@ -580,6 +627,27 @@ my $build_main_nav = sub {
 
     $search->child( assets => title => loc("Assets"), path => "/Asset/Search/" )
         if $session{CurrentUser}->HasRight( Right => 'ShowAssetsMenu', Object => RT->System );
+
+    my $reports = Menu->child( reports =>
+        title       => loc('Reports'),
+        description => loc('Reports summarizing ticket resolution and status'),
+        path        => loc('/Reports'),
+    );
+    $reports->child( resolvedbyowner =>
+        title       => loc('Resolved by owner'),
+        path        => '/Reports/ResolvedByOwner.html',
+        description => loc('Examine tickets resolved in a queue, grouped by owner'),
+    );
+    $reports->child( resolvedindaterange =>
+        title       => loc('Resolved in date range'),
+        path        => '/Reports/ResolvedByDates.html',
+        description => loc('Examine tickets resolved in a queue between two dates'),
+    );
+    $reports->child( createdindaterange =>
+        title       => loc('Created in a date range'),
+        path        => '/Reports/CreatedByDates.html',
+        description => loc('Examine tickets created in a queue between two dates'),
+    );
 
     if ($session{CurrentUser}->HasRight( Right => 'ShowArticlesMenu', Object => RT->System )) {
         my $articles = Menu->child( articles => title => loc('Articles'), path => "/Articles/index.html");
@@ -780,11 +848,15 @@ my $build_main_nav = sub {
 
                 my ($can_take, $tmsg) = $obj->CurrentUserCanSetOwner( Type => 'Take' );
                 my ($can_steal, $smsg) = $obj->CurrentUserCanSetOwner( Type => 'Steal' );
+                my ($can_untake, $umsg) = $obj->CurrentUserCanSetOwner( Type => 'Untake' );
                 if ( $can_take ){
                     $actions->child( take => title => loc('Take'), path => "/Ticket/Display.html?Action=Take;id=" . $id );
                 }
                 elsif ( $can_steal ){
                     $actions->child( steal => title => loc('Steal'), path => "/Ticket/Display.html?Action=Steal;id=" . $id );
+                }
+                elsif ( $can_untake ){
+                       $actions->child( untake => title => loc('Untake'), path => "/Ticket/Display.html?Action=Untake;id=" . $id );
                 }
 
                 # TODO needs a "Can extract article into a class applied to this queue" check
@@ -825,6 +897,9 @@ my $build_main_nav = sub {
         }
     }
 
+    # Scope here so we can share in the Privileged callback
+    my $args      = '';
+    my $has_query = '';
     if (
         (
                $request_path =~ m{^/(?:Ticket|Search)/}
@@ -835,8 +910,6 @@ my $build_main_nav = sub {
       )
     {
         my $search = Menu()->child('search')->child('tickets');
-        my $args      = '';
-        my $has_query = '';
         my $current_search = $session{"CurrentSearchHash"} || {};
         my $search_id = $DECODED_ARGS->{'SavedSearchLoad'} || $DECODED_ARGS->{'SavedSearchId'} || $current_search->{'SearchId'} || '';
         my $chart_id = $DECODED_ARGS->{'SavedChartSearchId'} || $current_search->{SavedChartSearchId};
@@ -1087,6 +1160,8 @@ my $build_main_nav = sub {
 
             $page->child("group-rights", title => loc("Group Rights"), path => "/Admin/Assets/Catalogs/GroupRights.html?$query");
             $page->child("user-rights",  title => loc("User Rights"),  path => "/Admin/Assets/Catalogs/UserRights.html?$query");
+
+            $page->child("default-values", title => loc('Default Values'), path => "/Admin/Assets/Catalogs/DefaultValues.html?$query");
         }
     }
 
@@ -1105,7 +1180,7 @@ my $build_main_nav = sub {
         PageMenu()->child( edit => title => loc('Edit'), path => '/Prefs/MyRT.html' );
     }
 
-    $m->callback( CallbackName => 'Privileged', Path => $request_path );
+    $m->callback( CallbackName => 'Privileged', Path => $request_path, Search_Args => $args, Has_Query => $has_query, ARGSRef => \%ARGS );
 };
 
 my $build_selfservice_nav = sub {
@@ -1172,7 +1247,7 @@ my $build_selfservice_nav = sub {
         }
     }
 
-    $m->callback( CallbackName => 'SelfService', Path => $request_path );
+    $m->callback( CallbackName => 'SelfService', Path => $request_path, ARGSRef => \%ARGS );
 };
 
 

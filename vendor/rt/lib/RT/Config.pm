@@ -2,7 +2,7 @@
 #
 # COPYRIGHT:
 #
-# This software is Copyright (c) 1996-2016 Best Practical Solutions, LLC
+# This software is Copyright (c) 1996-2017 Best Practical Solutions, LLC
 #                                          <sales@bestpractical.com>
 #
 # (Except where explicitly superseded by other copyright notices)
@@ -55,6 +55,7 @@ use 5.010;
 use File::Spec ();
 use Symbol::Global::Name;
 use List::MoreUtils 'uniq';
+use Storable ();
 
 =head1 NAME
 
@@ -147,6 +148,14 @@ can be set for each config optin:
 our %META;
 %META = (
     # General user overridable options
+    RestrictReferrerLogin => {
+        PostLoadCheck => sub {
+            my $self = shift;
+            if (defined($self->Get('RestrictReferrerLogin'))) {
+                RT::Logger->error("The config option 'RestrictReferrerLogin' is incorrect, and should be 'RestrictLoginReferrer' instead.");
+            }
+        },
+    },
     DefaultQueue => {
         Section         => 'General',
         Overridable     => 1,
@@ -284,6 +293,15 @@ our %META;
             Description => 'WYSIWYG message composer' # loc
         }
     },
+    MessageBoxUseSystemContextMenu => {
+        Section         => 'Ticket composition', #loc
+        Overridable     => 1,
+        SortOrder       => 5.2,
+        Widget          => '/Widgets/Form/Boolean',
+        WidgetArguments => {
+            Description => 'WYSIWYG use browser right-click menu', #loc
+        },
+    },
     MessageBoxRichTextHeight => {
         Section => 'Ticket composition',
         Overridable => 1,
@@ -330,23 +348,42 @@ our %META;
             Description => 'Place signature above quote', #loc
         },
     },
+    RefreshIntervals => {
+        Type => 'ARRAY',
+        PostLoadCheck => sub {
+            my $self = shift;
+            my @intervals = $self->Get('RefreshIntervals');
+            if (grep { $_ == 0 } @intervals) {
+                $RT::Logger->warning("Please do not include a 0 value in RefreshIntervals, as that default is already added for you.");
+            }
+        },
+    },
     SearchResultsRefreshInterval => {
         Section         => 'General',                       #loc
         Overridable     => 1,
         SortOrder       => 9,
         Widget          => '/Widgets/Form/Select',
         WidgetArguments => {
-            Description => 'Search results refresh interval',                            #loc
-            Values      => [qw(0 120 300 600 1200 3600 7200)],
-            ValuesLabel => {
-                0 => "Don't refresh search results.",                      #loc
-                120 => "Refresh search results every 2 minutes.",          #loc
-                300 => "Refresh search results every 5 minutes.",          #loc
-                600 => "Refresh search results every 10 minutes.",         #loc
-                1200 => "Refresh search results every 20 minutes.",        #loc
-                3600 => "Refresh search results every 60 minutes.",        #loc
-                7200 => "Refresh search results every 120 minutes.",       #loc
-            },  
+            Description => 'Search results refresh interval', #loc
+            Callback    => sub {
+                my @values = RT->Config->Get('RefreshIntervals');
+                my %labels = (
+                    0 => "Don't refresh search results.", # loc
+                );
+
+                for my $value (@values) {
+                    if ($value % 60 == 0) {
+                        $labels{$value} = ['Refresh search results every [quant,_1,minute,minutes].', $value / 60]; # loc
+                    }
+                    else {
+                        $labels{$value} = ['Refresh search results every [quant,_1,second,seconds].', $value]; # loc
+                    }
+                }
+
+                unshift @values, 0;
+
+                return { Values => \@values, ValuesLabel => \%labels };
+            },
         },  
     },
 
@@ -358,16 +395,25 @@ our %META;
         Widget          => '/Widgets/Form/Select',
         WidgetArguments => {
             Description => 'Home page refresh interval',                #loc
-            Values      => [qw(0 120 300 600 1200 3600 7200)],
-            ValuesLabel => {
-                0 => "Don't refresh home page.",                  #loc
-                120 => "Refresh home page every 2 minutes.",      #loc
-                300 => "Refresh home page every 5 minutes.",      #loc
-                600 => "Refresh home page every 10 minutes.",     #loc
-                1200 => "Refresh home page every 20 minutes.",    #loc
-                3600 => "Refresh home page every 60 minutes.",    #loc
-                7200 => "Refresh home page every 120 minutes.",   #loc
-            },  
+            Callback    => sub {
+                my @values = RT->Config->Get('RefreshIntervals');
+                my %labels = (
+                    0 => "Don't refresh home page.", # loc
+                );
+
+                for my $value (@values) {
+                    if ($value % 60 == 0) {
+                        $labels{$value} = ['Refresh home page every [quant,_1,minute,minutes].', $value / 60]; # loc
+                    }
+                    else {
+                        $labels{$value} = ['Refresh home page every [quant,_1,second,seconds].', $value]; # loc
+                    }
+                }
+
+                unshift @values, 0;
+
+                return { Values => \@values, ValuesLabel => \%labels };
+            },
         },  
     },
 
@@ -805,6 +851,7 @@ our %META;
     GnuPGOptions => { Type => 'HASH' },
     ReferrerWhitelist => { Type => 'ARRAY' },
     EmailDashboardLanguageOrder  => { Type => 'ARRAY' },
+    CustomFieldValuesCanonicalizers => { Type => 'ARRAY' },
     WebPath => {
         PostLoadCheck => sub {
             my $self  = shift;
@@ -1135,6 +1182,23 @@ our %META;
             $self->Set( 'ExternalInfoPriority', \@values );
         },
     },
+
+    ServiceBusinessHours => {
+        Type => 'HASH',
+        PostLoadCheck   => sub {
+            my $self = shift;
+            my $config = $self->Get('ServiceBusinessHours');
+            for my $name (keys %$config) {
+                if ($config->{$name}->{7}) {
+                    RT->Logger->error("Config option \%ServiceBusinessHours '$name' erroneously specifies '$config->{$name}->{7}->{Name}' as day 7; Sunday should be specified as day 0.");
+                }
+            }
+        },
+    },
+
+    ServiceAgreements => {
+        Type => 'HASH',
+    },
 );
 my %OPTIONS = ();
 my @LOADED_CONFIGS = ();
@@ -1203,7 +1267,8 @@ sub LoadConfig {
         delete $INC{$load};
 
         my $dir = $ENV{RT_SITE_CONFIG_DIR} || "$RT::EtcPath/RT_SiteConfig.d";
-        for my $file ( sort <$dir/*.pm> ) {
+        my $localdir = $ENV{RT_SITE_CONFIG_DIR} || "$RT::LocalEtcPath/RT_SiteConfig.d";
+        for my $file ( sort(<$dir/*.pm>), sort(<$localdir/*.pm>) ) {
             $self->_LoadConfig( %args, File => $file, Site => 1, Extension => '' );
             delete $INC{$file};
         }
@@ -1453,7 +1518,7 @@ sub GetObfuscated {
 
     return $self->Get(@_) unless $obfuscate;
 
-    my $res = $self->Get(@_);
+    my $res = Storable::dclone($self->Get(@_));
     $res = $obfuscate->( $self, $res, $user );
     return $self->_ReturnValue( $res, $META{$name}->{'Type'} || 'SCALAR' );
 }

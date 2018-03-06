@@ -1,7 +1,7 @@
 use strict;
 use warnings;
 
-BEGIN {require  't/lifecycles/utils.pl'};
+BEGIN {require  './t/lifecycles/utils.pl'};
 
 my $general = RT::Test->load_or_create_queue(
     Name => 'General',
@@ -242,5 +242,4 @@ diag "'!inactive -> inactive' actions are shown even if ticket has unresolved de
     );
 }
 
-undef $m;
 done_testing;

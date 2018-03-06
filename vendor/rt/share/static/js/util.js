@@ -91,7 +91,7 @@ function getClosestInputElements(input) {
     }
 }
 
-function setCheckbox(input, name, val) {
+function setCheckbox(input, name, val, fireClickHandler) {
     if (val == null) val = input.checked;
 
     var is_set_event = false;
@@ -126,7 +126,15 @@ function setCheckbox(input, name, val) {
             }
         }
         else {
-            myfield[i].checked = val;
+            // if we're changing the checked state
+            if (!(myfield[i].checked) != !val) {
+                if (fireClickHandler) {
+                    jQuery(myfield[i]).trigger('click');
+                }
+                else {
+                    myfield[i].checked = val;
+                }
+            }
         }
     }
 
@@ -285,6 +293,10 @@ function ReplaceAllTextareas() {
         sAgent.indexOf('ipad') != -1 ||
         sAgent.indexOf('android') != -1 )
         return false;
+
+    if (RT.Config.MessageBoxUseSystemContextMenu) {
+        CKEDITOR.config.removePlugins = 'liststyle,tabletools,scayt,menubutton,contextmenu';
+    }
 
     // replace all content and signature message boxes
     var allTextAreas = document.getElementsByTagName("textarea");

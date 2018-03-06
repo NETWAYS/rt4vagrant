@@ -2,7 +2,7 @@
 #
 # COPYRIGHT:
 #
-# This software is Copyright (c) 1996-2016 Best Practical Solutions, LLC
+# This software is Copyright (c) 1996-2017 Best Practical Solutions, LLC
 #                                          <sales@bestpractical.com>
 #
 # (Except where explicitly superseded by other copyright notices)
@@ -302,6 +302,10 @@ sub Create {
             }
         }
     }
+
+    # Add CF default values
+    my ( $status, @msgs ) = $self->AddCustomFieldDefaultValues;
+    push @non_fatal_errors, @msgs unless $status;
 
     # Create transaction
     my ( $txn_id, $txn_msg, $txn ) = $self->_NewTransaction( Type => 'Create' );

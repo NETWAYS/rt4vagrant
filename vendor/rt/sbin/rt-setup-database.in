@@ -3,7 +3,7 @@
 #
 # COPYRIGHT:
 #
-# This software is Copyright (c) 1996-2016 Best Practical Solutions, LLC
+# This software is Copyright (c) 1996-2017 Best Practical Solutions, LLC
 #                                          <sales@bestpractical.com>
 #
 # (Except where explicitly superseded by other copyright notices)
@@ -615,6 +615,7 @@ sub error {
 }
 
 sub get_dba_password {
+    return "" if $db_type eq 'SQLite';
     print "In order to create or update your RT database,"
         . " this script needs to connect to your "
         . " $db_type instance on $db_host (port '$db_port') as $dba_user\n";

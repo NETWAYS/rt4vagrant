@@ -1,7 +1,7 @@
 use strict;
 use warnings;
 
-BEGIN {require  't/lifecycles/utils.pl'};
+BEGIN {require  './t/lifecycles/utils.pl'};
 
 my $general = RT::Test->load_or_create_queue(
     Name => 'General',
@@ -39,5 +39,4 @@ ok $m->login, 'logged in';
     );
 }
 
-undef $m;
 done_testing;
