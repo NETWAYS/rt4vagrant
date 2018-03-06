@@ -20,4 +20,5 @@ nytprof.out
 /_eumm/
 vendor/rt/var
 vendor/rt/local
+vendor/rt/sbin/rt-passwd
 work

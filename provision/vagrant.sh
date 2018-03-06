@@ -95,7 +95,7 @@ DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
 cpanm --notest --installdeps /vagrant/provision
 
 RTBASE=/vagrant/vendor/rt
-RTVERSION="rt-4.4.1"
+RTVERSION="rt-4.4.2"
 
 echo "$RTVERSION" > $RTBASE/.tag
 
