@@ -1,4 +1,6 @@
 #!/bin/bash
+RTBASE=/vagrant/vendor/rt
+RTVERSION="rt-4.4.2"
 
 apt-get update
 DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
@@ -94,9 +96,6 @@ DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
 
 cpanm --notest --installdeps /vagrant/provision
 
-RTBASE=/vagrant/vendor/rt
-RTVERSION="rt-4.4.2"
-
 echo "$RTVERSION" > $RTBASE/.tag
 
 cd $RTBASE
@@ -125,4 +124,8 @@ if [[ ! -f $RTBASE/var/rt4 ]]; then
     --dba-password=""
 fi
 
-cp -f /vagrant/provision/rt/RT_SiteConfig.pm /vagrant/vendor/rt/etc
+cp -f /vagrant/provision/rt/RT_SiteConfig.pm $RTBASE/etc
+
+if [[ -e /vagrant/work/RT_SiteConfig.pm ]]; then
+  cp -f /vagrant/work/RT_SiteConfig.pm $RTBASE/etc/RT_SiteConfig.d/dev.pm
+fi

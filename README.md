@@ -36,6 +36,29 @@ This environment is configured for Parallels, VMWare and VirtualBox.
  * Base box is ubuntu 16.04
  * Modules via CPAN installed
 
+## Configuration
+
+The default configuration is installed into `/vagrant/vendor/rt/etc/RT_SiteConfig.pm`.
+
+If you need your own local configuration file for e.g. extensions and other
+development tests, copy `provision/rt/RT_SiteConfig.pm` to `work/RT_SiteConfig.pm` and
+provision the Vagrant box. The `work` directory is ignored by the git tree.
+
+```
+cp provision/rt/RT_SiteConfig.pm work/RT_SiteConfig.pm
+
+vim work/RT_SiteConfig.pm
+
+vagrant provision
+
+vagrant ssh
+
+sudo /vagrant/start-rt4.sh
+```
+
+The configuration file is located in `/vagrant/vendor/rt/etc/RT_SiteConfig.d` inside the Vagrant box
+and overrides the default `/vagrant/vendor/rt/etc/RT_SiteConfig.pm` file.
+
 ## Extensions
 
 Either use `Vagrantfile.local` to set specific synced folders, or copy

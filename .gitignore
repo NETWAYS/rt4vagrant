@@ -23,3 +23,4 @@ vendor/rt/local
 vendor/rt/sbin/rt-passwd
 Vagrantfile.local
 work
+vendor/rt/etc/RT_SiteConfig.d
