@@ -36,6 +36,25 @@ This environment is configured for Parallels, VMWare and VirtualBox.
  * Base box is ubuntu 16.04
  * Modules via CPAN installed
 
+## Extensions
+
+Either use `Vagrantfile.local` to set specific synced folders, or copy
+extensions into the `work` directory.
+
+Extensions need to create a Makefile in order being installed. This requires
+a specific RT install location in `/vagrant/vendor/rt`. Set the `RTHOME`
+environment variable in order to avoid questions by the `perl Makefile.PL` call.
+
+```
+cd /vagrant/work/rt-extension-ticketactions
+
+RTHOME=/vagrant/vendor/rt perl Makefile.PL
+
+make
+make install
+```
+
+
 ## License
 
 rt4vagrant is licensed under the terms of the GNU General Public
