@@ -127,5 +127,7 @@ fi
 cp -f /vagrant/provision/rt/RT_SiteConfig.pm $RTBASE/etc
 
 if [[ -e /vagrant/work/RT_SiteConfig.pm ]]; then
-  cp -f /vagrant/work/RT_SiteConfig.pm $RTBASE/etc/RT_SiteConfig.d/dev.pm
+  # RT_SiteConfig.d config is ignored, ensure the directory exists
+  mkdir -p /vagrant/vendor/rt/etc/RT_SiteConfig.d
+  ln -sf /vagrant/work/RT_SiteConfig.pm $RTBASE/etc/RT_SiteConfig.d/dev.pm
 fi
