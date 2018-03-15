@@ -77,6 +77,15 @@ make
 make install
 ```
 
+## Database
+
+```
+sqlite3 /vagrant/vendor/rt/var/rt4
+
+.tables
+
+SELECT * from CustomFields;
+```
 
 ## License
 

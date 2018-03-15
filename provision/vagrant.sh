@@ -14,6 +14,7 @@ DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
   git \
   vim \
   postfix \
+  sqlite \
   \
   libhtml-mason-perl \
   libapache-session-perl \
