@@ -1,6 +1,10 @@
 #!/bin/bash
+
+set -e
+
 RTBASE=/vagrant/vendor/rt
 RTVERSION="rt-4.4.2"
+RTHOME=$RTBASE
 
 apt-get update
 DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
@@ -98,6 +102,7 @@ DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
 cpanm --notest --installdeps /vagrant/provision
 
 echo "$RTVERSION" > $RTBASE/.tag
+echo "RTHOME=$RTHOME" > /etc/profile.d/rt.sh
 
 cd $RTBASE
 autoconf -f
@@ -132,3 +137,6 @@ if [[ -e /vagrant/work/RT_SiteConfig.pm ]]; then
   mkdir -p /vagrant/vendor/rt/etc/RT_SiteConfig.d
   ln -sf /vagrant/work/RT_SiteConfig.pm $RTBASE/etc/RT_SiteConfig.d/dev.pm
 fi
+
+cp /vagrant/start-rt.sh /usr/local/sbin/start-rt
+chmod 755 /usr/local/sbin/start-rt

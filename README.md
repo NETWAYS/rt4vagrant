@@ -18,7 +18,7 @@ Installed Vagrant with a suitable hypervisor is required. To run:
     vagrant up --provider=parallels
 
     # On the machine
-    $ sudo /vagrant/start-rt.sh
+    $ sudo start-rt
 
 
 Access http://192.168.56.10 in your browser.
@@ -53,7 +53,7 @@ vagrant provision
 
 vagrant ssh
 
-sudo /vagrant/start-rt4.sh
+sudo start-rt
 ```
 
 The configuration file is located in `/vagrant/vendor/rt/etc/RT_SiteConfig.d` inside the Vagrant box
@@ -71,7 +71,7 @@ environment variable in order to avoid questions by the `perl Makefile.PL` call.
 ```
 cd /vagrant/work/rt-extension-ticketactions
 
-RTHOME=/vagrant/vendor/rt perl Makefile.PL
+perl Makefile.PL
 
 make
 make install
