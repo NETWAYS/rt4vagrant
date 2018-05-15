@@ -3,7 +3,7 @@
 #
 # COPYRIGHT:
 #
-# This software is Copyright (c) 1996-2017 Best Practical Solutions, LLC
+# This software is Copyright (c) 1996-2018 Best Practical Solutions, LLC
 #                                          <sales@bestpractical.com>
 #
 # (Except where explicitly superseded by other copyright notices)
@@ -1308,6 +1308,8 @@ sub InstanceObj {
         $class = "RT::Queue";
     } elsif ($self->Domain eq 'RT::Ticket-Role') {
         $class = "RT::Ticket";
+    } elsif ($self->Domain eq 'RT::Asset-Role') {
+        $class = "RT::Asset";
     }
 
     return unless $class;
