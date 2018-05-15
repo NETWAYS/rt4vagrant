@@ -396,4 +396,63 @@ diag "make sure the list of columns available in the 'Order by' dropdowns are co
     $cf->SetDisabled(1);
 }
 
+diag "make sure active and inactive statuses generate the correct query";
+{
+    $agent->get_ok( $url . '/Search/Build.html?NewQuery=1' );
+    ok( $agent->form_name( 'BuildQuery' ), "found the form" );
+    $agent->field( ValueOfStatus => 'active' );
+    $agent->click( 'AddClause' );
+    is getQueryFromForm( $agent ), "Status = '__Active__'", "active status generated the correct query";
+
+    $agent->get_ok( $url . '/Search/Build.html?NewQuery=1' );
+    ok( $agent->form_name( 'BuildQuery' ), "found the form" );
+    $agent->field( ValueOfStatus => 'inactive' );
+    $agent->click( 'AddClause' );
+    is getQueryFromForm( $agent ), "Status = '__Inactive__'", "inactive status generated the correct query";
+}
+
+diag "test null values";
+{
+    my $cf = RT::Test->load_or_create_custom_field(
+        Name  => 'foo',
+        Type  => 'FreeformSingle',
+        Queue => 0,
+    );
+
+    RT::Test->create_tickets(
+        { Queue   => 'General' },
+        { Subject => 'ticket bar', 'CustomField-' . $cf->id => 'bar' },
+        { Subject => 'ticket baz', 'CustomField-' . $cf->id => 'baz' },
+        { Subject => 'ticket null' },
+    );
+
+    $agent->get_ok( '/Search/Build.html?NewQuery=1' );
+    $agent->submit_form(
+        form_name => 'BuildQuery',
+        fields    => { 'CF.{foo}Op' => '=', 'ValueOfCF.{foo}' => 'NULL', },
+        button    => 'DoSearch',
+    );
+
+    $agent->title_is( 'Found 2 tickets', 'found 2 tickets with CF.{foo} IS NULL' );
+    # the other ticket was created before the block
+    $agent->content_contains( 'ticket null', 'has ticket null' );
+    $agent->follow_link_ok( { text => 'Advanced' } );
+    $agent->text_lacks( q[CF.{foo} = 'NULL'] );
+    $agent->text_contains( 'CF.{foo} IS NULL', q["= 'NULL'" is converted to "IS NULL"] );
+
+    $agent->get_ok( '/Search/Build.html?NewQuery=1' );
+    $agent->submit_form(
+        form_name => 'BuildQuery',
+        fields    => { 'CF.{foo}Op' => '!=', 'ValueOfCF.{foo}' => 'NULL', },
+        button    => 'DoSearch',
+    );
+
+    $agent->title_is( 'Found 2 tickets', 'found 2 ticket with CF.{foo} IS NOT NULL' );
+    $agent->content_contains( 'ticket bar', 'has ticket bar' );
+    $agent->content_contains( 'ticket baz', 'has ticket baz' );
+    $agent->follow_link_ok( { text => 'Advanced' } );
+    $agent->text_lacks( q[CF.{foo} != 'NULL'] );
+    $agent->text_contains( 'CF.{foo} IS NOT NULL', q["!= 'NULL'" is converted to "IS NOT NULL"] );
+}
+
 done_testing;

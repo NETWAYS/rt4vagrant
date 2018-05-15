@@ -2,7 +2,7 @@
 #
 # COPYRIGHT:
 #
-# This software is Copyright (c) 1996-2017 Best Practical Solutions, LLC
+# This software is Copyright (c) 1996-2018 Best Practical Solutions, LLC
 #                                          <sales@bestpractical.com>
 #
 # (Except where explicitly superseded by other copyright notices)
@@ -307,7 +307,7 @@ sub HandleRequest {
 
     # attempt external auth
     $HTML::Mason::Commands::m->comp( '/Elements/DoAuth', %$ARGS )
-        if RT->Config->Get('ExternalAuth');
+        if @{ RT->Config->Get( 'ExternalAuthPriority' ) || [] };
 
     # Process session-related callbacks before any auth attempts
     $HTML::Mason::Commands::m->callback( %$ARGS, CallbackName => 'Session', CallbackPage => '/autohandler' );
@@ -322,7 +322,7 @@ sub HandleRequest {
 
     # attempt external auth
     $HTML::Mason::Commands::m->comp( '/Elements/DoAuth', %$ARGS )
-        if RT->Config->Get('ExternalAuth');
+        if @{ RT->Config->Get( 'ExternalAuthPriority' ) || [] };
 
     # Process per-page authentication callbacks
     $HTML::Mason::Commands::m->callback( %$ARGS, CallbackName => 'Auth', CallbackPage => '/autohandler' );
