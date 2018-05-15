@@ -10,8 +10,7 @@ if [ ! -d $RTHOME ]; then
 fi
 
 if [ ! -d $RTCACHE ]; then
-    echo "RTCACHE does not exist: $RTCACHE"
-    exit 1
+    mkdir -p $RTCACHE
 fi
 
 if [ ! -x $SCRIPT ]; then
