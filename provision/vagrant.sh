@@ -3,7 +3,7 @@
 set -e
 
 RTBASE=/vagrant/vendor/rt
-RTVERSION="rt-4.4.2"
+RTVERSION="rt-4.4.3beta1"
 RTHOME=$RTBASE
 
 apt-get update
