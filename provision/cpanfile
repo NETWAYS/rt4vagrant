@@ -96,7 +96,7 @@ requires 'Email::Abstract';
 requires 'File::Find';
 requires 'File::Which';
 requires 'Locale::PO';
-requires 'Log::Dispatch::Perl';
+#requires 'Log::Dispatch::Perl';
 requires 'Mojo::DOM';
 requires 'Plack::Middleware::Test::StashWarnings', '0.08';
 requires 'Set::Tiny';
