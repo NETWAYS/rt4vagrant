@@ -74,6 +74,10 @@ requires 'XML::RSS', '1.05';
 requires 'Symbol::Global::Name';
 requires 'CGI', '4.00';
 
+# Plugins
+requires 'Date::Holidays';
+requires 'Date::Holidays::DE';
+
 # Mailgate
 requires 'Crypt::SSLeay';
 requires 'Getopt::Long';
