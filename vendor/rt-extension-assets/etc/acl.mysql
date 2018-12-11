@@ -1,2 +1,0 @@
-sub acl { return () }
-1;
