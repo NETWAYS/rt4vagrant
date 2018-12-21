@@ -97,7 +97,9 @@ DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
   libdatetime-locale-perl \
   libdatetime-perl \
   libnet-ssleay-perl \
-  libnet-ldap-perl
+  libnet-ldap-perl \
+  libredis-perl
+
 
 cpanm --notest --installdeps /vagrant/provision
 

@@ -184,3 +184,6 @@ requires 'Data::Page::Pageset';
 requires 'Scope::Upper';
 requires 'Net::LDAP::Server::Test';
 
+# Sessions
+requires 'Redis';
+requires 'Apache::Session::NoSQL';
