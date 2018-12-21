@@ -187,3 +187,9 @@ requires 'Net::LDAP::Server::Test';
 # Sessions
 requires 'Redis';
 requires 'Apache::Session::NoSQL';
+
+# RT 4.6
+requires 'Encode::Detect::Detector';
+requires 'Encode::HanExtra';
+requires 'HTML::FormatExternal';
+requires 'HTML::Gumbo';
