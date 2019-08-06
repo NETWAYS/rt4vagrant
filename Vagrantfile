@@ -16,12 +16,9 @@ else
 end
 
 nodes = {}
-if not File.exists?("Vagrantfile.nodes") then
-  puts "ERROR: Vagrantfile.nodes is missing from source tree."
-  exit 1
+if File.exists?("Vagrantfile.nodes") then
+  eval(IO.read("Vagrantfile.nodes"), binding)
 end
-
-eval(IO.read("Vagrantfile.nodes"), binding)
 
 # allow to override the configuration
 if File.exists?("Vagrantfile.local") then
@@ -109,4 +106,3 @@ Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
     end
   end
 end
-
