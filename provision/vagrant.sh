@@ -104,7 +104,7 @@ DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
 cpanm --notest --installdeps /vagrant/provision
 
 echo "$RTVERSION" > $RTBASE/.tag
-echo "RTHOME=$RTHOME" > /etc/profile.d/rt.sh
+echo "export RTHOME=$RTHOME" > /etc/profile.d/rt.sh
 
 cd $RTBASE
 autoconf -f
